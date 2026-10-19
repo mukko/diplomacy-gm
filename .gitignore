@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# Do not commit the official rulebook PDF (copyrighted). Link to it instead.
+*.pdf
