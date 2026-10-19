@@ -2,6 +2,7 @@
 
 pub mod adjudicator;
 pub mod api;
+pub mod engine;
 pub mod game;
 pub mod map;
 pub mod model;

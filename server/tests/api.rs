@@ -8,6 +8,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use diplomacy_gm_server::adjudicator::{AdjudicationError, Adjudicator, PendingEngine};
 use diplomacy_gm_server::api::{AppState, router};
+use diplomacy_gm_server::engine::Engine;
 use diplomacy_gm_server::game::Game;
 use diplomacy_gm_server::model::{GameState, Order, OrderResult, Outcome, Phase, Resolution, TraceStep};
 use diplomacy_gm_server::store::GameStore;
@@ -203,6 +204,53 @@ async fn resolve_without_engine_is_501_and_changes_nothing() {
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert_eq!(body["error"], "adjudicator-not-implemented");
     assert_eq!(read_save(dir.path(), &id), before);
+}
+
+#[tokio::test]
+async fn resolve_with_engine_returns_the_movement_resolution() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let rus = r#"[{ "power": "RUS", "unit": "Sev", "type": "move", "to": "Bla" }]"#;
+    let tur = r#"[{ "power": "TUR", "unit": "Ank", "type": "move", "to": "Bla" }]"#;
+    for (power, body) in [("GER", GERMAN_ORDERS), ("RUS", rus), ("TUR", tur)] {
+        let uri = format!("/games/{id}/phases/S1901M/orders/{power}");
+        let (status, body) = call(&app, Method::PUT, &uri, Some(body.into())).await;
+        assert!(status.is_success(), "{body}");
+    }
+
+    let (status, res) = call(&app, Method::POST, &format!("/games/{id}/phases/S1901M/resolve"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["phase"], "S1901M");
+    assert_eq!(res["nextState"]["phase"], "F1901M");
+    let outcome = |unit: &str| {
+        res["orders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["order"]["unit"] == unit)
+            .unwrap()["outcome"]
+            .clone()
+    };
+    assert_eq!(outcome("Ber"), "success");
+    assert_eq!(outcome("Sev"), "fail");
+    assert_eq!(outcome("Ank"), "fail");
+    let units = res["nextState"]["units"].as_array().unwrap();
+    assert!(units.iter().any(|u| u["location"] == "Den" && u["power"] == "GER"));
+    assert!(
+        units.iter().any(|u| u["location"] == "Sev"),
+        "the standoff leaves F Sev home"
+    );
+    let steps: Vec<&str> = res["trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["step"].as_str().unwrap())
+        .collect();
+    for step in ["validate", "strengths", "moves", "result"] {
+        assert!(steps.contains(&step), "{step} missing from {steps:?}");
+    }
+    assert_eq!(read_save(dir.path(), &id)["state"]["phase"], "F1901M");
 }
 
 #[tokio::test]

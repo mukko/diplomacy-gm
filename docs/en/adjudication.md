@@ -153,7 +153,7 @@ confirmed by the project owner.
 | PR-02 | Support from the defender's own power | Not counted toward dislodging that power's unit, but **counts** for prevent strength (bouncing others). | Diagrams 24–26 |
 | PR-03 | Paradoxes not covered by rules 21–22 | Szykman rule: involved convoyed armies do not move and have no effect. | DATC recommendation |
 | PR-04 | Coast specification | Omitted but only one coast reachable → inferred. Unreachable coast given → invalid (Hold). Coast on an army order → ignored. | R-MAP-07 |
-| PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. | — |
+| PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. **(open)** If the adjudicator nevertheless receives several orders for one unit, all of them are ignored and the unit holds (independent of input order). | — |
 | PR-06 | Retreat to the origin of a **convoyed** attacker | **Forbidden**, following the rulebook literally (R-RET-03(b)), even though DATC allows it. Confirmed by the project owner. | R-RET-03 |
 | PR-07 | "via convoy" | Represented as `viaConvoy: true` on the move. If the destination is not adjacent, a convoy is used regardless. | R-CVY-11 |
 | PR-08 | Civil-disorder distance | Minimum number of province steps from the unit to **any** home SC of its power (owned or not), moving through any province (land or water) regardless of unit type. Ties: fleets before armies, then alphabetical by province (R-CD-03). The automatic choice is only a **default**: before the phase is resolved the GM may enter or replace the disband orders of any power (see § 7), and GM-entered orders take precedence. Confirmed by the project owner. | R-CD-03 |

@@ -54,7 +54,7 @@ Legend: ✅ succeeds · ❌ fails · 💥 dislodged · ✂ support cut
 | ID | Orders | Expected | Rules |
 |----|--------|----------|-------|
 | RB-D19 | Eng: A Lon-Nwy, F Nth C A Lon-Nwy | ✅ | R-CVY-03 |
-| RB-CVYMISMATCH | A Rum-Arm · F Bla C A Rum-Ank | convoy void; Rum-Arm proceeds by land on its own merits | R-CVY-04 |
+| RB-CVYMISMATCH | A Rum-Arm · F Bla C A Rum-Ank | convoy void. Rum and Arm are not adjacent, so A Rum-Arm needs a convoy and has none: it fails and the army stays in Rum. (With a land destination, e.g. A Rum-Sev, the move would be judged on its own merits.) | R-CVY-04 |
 | RB-SUPCVY | Eng: A Pic-Bre, A Lon S A Pic-Bre, F Eng C A Lon S A Pic-Bre · Fra: F Bre H | Lon support and Eng convoy invalid; Pic-Bre ❌ (1 vs 1) | R-SUP-07 |
 | RB-D20 | Eng: A Lon-Tun, F Eng C A Lon-Tun, F Mid C A Lon-Tun · Fra: F Wes C A Lon-Tun | ✅ (army reaches Tun) | R-CVY-03 |
 | RB-D21 | Fra: A Spa-Nap, F GoL C A Spa-Nap, F Tyn C A Spa-Nap · Ita: F Ion-Tyn, F Tun S F Ion-Tyn | F Tyn 💥; convoy fails; A Spa stays | R-CVY-05 |

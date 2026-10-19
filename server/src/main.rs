@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use diplomacy_gm_server::adjudicator::PendingEngine;
 use diplomacy_gm_server::api::{AppState, router};
+use diplomacy_gm_server::engine::Engine;
 use diplomacy_gm_server::store::GameStore;
 
 const USAGE: &str = "usage: diplomacy-gm-server [--data-dir DIR] [--addr HOST:PORT]
@@ -46,7 +46,7 @@ async fn main() {
     });
     let app = router(AppState {
         store: Arc::new(store),
-        adjudicator: Arc::new(PendingEngine),
+        adjudicator: Arc::new(Engine),
     });
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {

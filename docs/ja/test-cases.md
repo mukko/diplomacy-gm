@@ -56,7 +56,7 @@
 | ID | 命令 | 期待結果 | ルール |
 |----|------|----------|--------|
 | RB-D19 | 英: A Lon-Nwy, F Nth C A Lon-Nwy | ✅ | R-CVY-03 |
-| RB-CVYMISMATCH | A Rum-Arm · F Bla C A Rum-Ank | 輸送は無効。Rum-Arm は陸路の移動として通常どおり判定 | R-CVY-04 |
+| RB-CVYMISMATCH | A Rum-Arm · F Bla C A Rum-Ank | 輸送は無効。Rum と Arm は隣接していないため A Rum-Arm には輸送が必要だが、合致する輸送がないので失敗し、陸軍は Rum に留まる。(陸路で行ける移動先、例えば A Rum-Sev なら、移動は通常どおり判定される。) | R-CVY-04 |
 | RB-SUPCVY | 英: A Pic-Bre, A Lon S A Pic-Bre, F Eng C A Lon S A Pic-Bre · 仏: F Bre H | Lon の支援と Eng の輸送は不正。Pic-Bre ❌（1 対 1） | R-SUP-07 |
 | RB-D20 | 英: A Lon-Tun, F Eng C A Lon-Tun, F Mid C A Lon-Tun · 仏: F Wes C A Lon-Tun | ✅（陸軍は Tun に到着） | R-CVY-03 |
 | RB-D21 | 仏: A Spa-Nap, F GoL C A Spa-Nap, F Tyn C A Spa-Nap · 伊: F Ion-Tyn, F Tun S F Ion-Tyn | F Tyn 💥。輸送失敗。A Spa は留まる | R-CVY-05 |
