@@ -103,7 +103,8 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
 | `GET  /games/:id` | Current state and phase |
 | `GET  /games/:id/history` | All phases with orders and resolutions |
 | `GET  /games/:id/units/:prov/options` | Legal orders for a unit (helps order entry UI) |
-| `PUT  /games/:id/phases/:phase/orders/:power` | Submit/replace a power's orders; returns per-order validation |
+| `PUT  /games/:id/phases/:phase/orders/:power` | Submit/replace a power's orders; returns per-order validation. The GM may also call this for any power (e.g. manual disbands for a power in civil disorder, PR-08) |
+| `GET  /games/:id/phases/:phase/default-disbands` | GM only: automatically proposed disbands per power (R-CD-03 / PR-08), for review before resolving |
 | `POST /games/:id/phases/:phase/resolve` | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
 | `GET  /games/:id/phases/:phase/resolution` | Fetch a past resolution for replay |
 | `PUT  /games/:id/civil-disorder/:power` | GM only: declare civil disorder for a power from the current phase (PR-16) |
@@ -120,7 +121,7 @@ Secret simultaneous orders: until a phase is resolved, a power's orders are only
 | Map | SVG map; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
 | Order input | Select unit → choose order type → click target(s); shows legal options from the server; text entry as alternative |
 | Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05), civil-disorder badges |
-| GM controls | Resolve phase, declare / lift civil disorder per power (PR-16) |
+| GM controls | Resolve phase, declare / lift civil disorder per power (PR-16), review automatically proposed disbands and override them manually (PR-08) |
 | Resolution replay | Step through `trace` (prev / next / play): highlight orders, show strengths, cut supports, bounces, dislodgements with rule IDs |
 | History | Browse past phases and their maps/orders |
 

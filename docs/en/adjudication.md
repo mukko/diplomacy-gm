@@ -156,7 +156,7 @@ confirmed by the project owner.
 | PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. | — |
 | PR-06 | Retreat to the origin of a **convoyed** attacker | **Forbidden**, following the rulebook literally (R-RET-03(b)), even though DATC allows it. Confirmed by the project owner. | R-RET-03 |
 | PR-07 | "via convoy" | Represented as `viaConvoy: true` on the move. If the destination is not adjacent, a convoy is used regardless. | R-CVY-11 |
-| PR-08 | Civil-disorder distance **(open)** | Minimum number of province steps from the unit to any home SC of its power, moving through any province (land or water) regardless of unit type. | R-CD-03 |
+| PR-08 | Civil-disorder distance | Minimum number of province steps from the unit to **any** home SC of its power (owned or not), moving through any province (land or water) regardless of unit type. Ties: fleets before armies, then alphabetical by province (R-CD-03). The automatic choice is only a **default**: before the phase is resolved the GM may enter or replace the disband orders of any power (see § 7), and GM-entered orders take precedence. Confirmed by the project owner. | R-CD-03 |
 | PR-09 | Missing retreat / adjustment orders | Missing retreat → disband. Missing required disbands → chosen by R-CD-03. Missing builds → waived. | R-RET-07, R-CD |
 | PR-10 | Elimination | A power with no units and no SCs is eliminated. A power with SCs but no units stays in the game. | — |
 | PR-11 | Victory timing | Checked after the Fall retreat phase, after SC ownership update, before adjustments. | R-GEN-03 |
@@ -176,7 +176,7 @@ confirmed by the project owner.
 
 1. For each power: `delta = controlledSCs - units`.
 2. `delta > 0`: accept up to `delta` valid builds (R-ADJ-03/04/05/06), others ignored.
-3. `delta < 0`: require exactly `-delta` disbands; missing ones chosen by R-CD-03 (PR-09).
+3. `delta < 0`: require exactly `-delta` disbands; missing ones chosen by R-CD-03 / PR-08 (PR-09). The server exposes the automatically proposed disbands before resolution so the GM can review them and, if needed, enter different disband orders for that power (GM override).
 4. `delta = 0`: no orders accepted.
 5. Next phase is Spring of the following year.
 
