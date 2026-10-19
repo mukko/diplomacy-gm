@@ -202,7 +202,7 @@ Notation summary:
 
 | ID | Rule |
 |----|------|
-| R-CD-01 | A power that leaves or fails to submit orders in a Spring/Fall turn is in **civil disorder**: its units all hold and do **not** support each other. |
+| R-CD-01 | A power that leaves or fails to submit orders in a Spring/Fall turn is in **civil disorder**: its units all hold and do **not** support each other. *(In this tool civil disorder is declared by the GM — PR-16.)* |
 | R-CD-02 | Its dislodged units are disbanded (no retreats). No builds are made. |
 | R-CD-03 | If it must remove units, remove first the units **farthest from its home country**; ties: **fleets before armies**, then **alphabetical by province**. (Distance definition: PR-08.) |
 | R-CD-04 | Replacing a departed player is recommended; policy is decided before the game. |

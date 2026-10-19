@@ -154,7 +154,7 @@ confirmed by the project owner.
 | PR-03 | Paradoxes not covered by rules 21–22 | Szykman rule: involved convoyed armies do not move and have no effect. | DATC recommendation |
 | PR-04 | Coast specification | Omitted but only one coast reachable → inferred. Unreachable coast given → invalid (Hold). Coast on an army order → ignored. | R-MAP-07 |
 | PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. | — |
-| PR-06 | Retreat to the origin of a **convoyed** attacker **(open)** | Default: forbidden (literal reading of R-RET-03(b)). DATC allows it; may become a config flag. | R-RET-03 |
+| PR-06 | Retreat to the origin of a **convoyed** attacker | **Forbidden**, following the rulebook literally (R-RET-03(b)), even though DATC allows it. Confirmed by the project owner. | R-RET-03 |
 | PR-07 | "via convoy" | Represented as `viaConvoy: true` on the move. If the destination is not adjacent, a convoy is used regardless. | R-CVY-11 |
 | PR-08 | Civil-disorder distance **(open)** | Minimum number of province steps from the unit to any home SC of its power, moving through any province (land or water) regardless of unit type. | R-CD-03 |
 | PR-09 | Missing retreat / adjustment orders | Missing retreat → disband. Missing required disbands → chosen by R-CD-03. Missing builds → waived. | R-RET-07, R-CD |
@@ -164,7 +164,7 @@ confirmed by the project owner.
 | PR-13 | Hold support to a unit whose move order was invalid | Valid — that unit is treated as holding. | R-ORD-04, R-SUP-05 |
 | PR-14 | Order for a unit not owned / not present | Ignored and reported in the trace. | — |
 | PR-15 | Excess or invalid adjustment orders | Invalid ignored (R-ADJ-01); builds beyond entitlement ignored in submission order; build in an occupied or non-controlled home SC is invalid. | R-ADJ |
-| PR-16 | Civil disorder trigger **(open)** | A power with no submitted orders when the phase is resolved is in civil disorder for that phase (units hold, no mutual support). Whether a missing player is automatic or GM-declared is a game setting. | R-CD-01 |
+| PR-16 | Civil disorder trigger | **Declared by the GM**, never automatic. The GM records the declaration (power, starting phase) in the tool and can lift it later (e.g. a replacement player joins). While declared: movement — all orders ignored, units hold, no mutual support (R-CD-01); retreat — dislodged units disbanded (R-CD-02); adjustment — no builds, required removals chosen by R-CD-03. A power that merely failed to submit orders without a declaration is handled by R-ORD-03 / PR-09. | R-CD-01, R-CD-02 |
 
 ## 6. Retreat phase
 

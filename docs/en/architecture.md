@@ -49,7 +49,7 @@ create game ─▶ S1901M ─▶ [S1901R] ─▶ F1901M ─▶ [F1901R] ─▶ W
 - Retreat phases (`R`) are skipped when no unit has a legal retreat.
 - Adjustment phase (`A`) is skipped when no power needs to build or disband.
 - A phase is resolved when the GM triggers it (or all powers have submitted, depending on settings).
-  Powers that submitted nothing are treated per PR-09 / PR-16.
+  Powers that submitted nothing are treated per R-ORD-03 / PR-09; civil disorder applies only when declared by the GM (PR-16).
 
 ### Phase ID format
 
@@ -72,7 +72,7 @@ create game ─▶ S1901M ─▶ [S1901R] ─▶ F1901M ─▶ [F1901R] ─▶ W
     { "power": "FRA", "type": "A", "location": "Bur", "attackerFrom": "Ruh", "retreatOptions": ["Gas", "Pic"] }
   ],
   "standoffProvinces": ["Sil"],
-  "civilDisorder": [],
+  "civilDisorder": [ { "power": "ITA", "since": "F1902M" } ],   // GM-declared (PR-16)
   "winner": null
 }
 
@@ -106,6 +106,8 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
 | `PUT  /games/:id/phases/:phase/orders/:power` | Submit/replace a power's orders; returns per-order validation |
 | `POST /games/:id/phases/:phase/resolve` | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
 | `GET  /games/:id/phases/:phase/resolution` | Fetch a past resolution for replay |
+| `PUT  /games/:id/civil-disorder/:power` | GM only: declare civil disorder for a power from the current phase (PR-16) |
+| `DELETE /games/:id/civil-disorder/:power` | GM only: lift civil disorder (e.g. replacement player) |
 | `POST /adjudicate` | Stateless: `{state, orders}` → `Resolution` (sandbox, tests, "what-if") |
 
 Secret simultaneous orders: until a phase is resolved, a power's orders are only visible to that power and the GM.
@@ -117,7 +119,8 @@ Secret simultaneous orders: until a phase is resolved, a power's orders are only
 |------|----------|
 | Map | SVG map; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
 | Order input | Select unit → choose order type → click target(s); shows legal options from the server; text entry as alternative |
-| Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05) |
+| Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05), civil-disorder badges |
+| GM controls | Resolve phase, declare / lift civil disorder per power (PR-16) |
 | Resolution replay | Step through `trace` (prev / next / play): highlight orders, show strengths, cut supports, bounces, dislodgements with rule IDs |
 | History | Browse past phases and their maps/orders |
 
