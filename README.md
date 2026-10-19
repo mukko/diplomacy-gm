@@ -6,7 +6,19 @@ A game-master tool for the board game ***Diplomacy***: an **API server** that ad
 according to the official rules and returns results with step-by-step reasoning, and a **GUI**
 that shows the map and game progress, accepts order input, and replays each resolution step.
 
-> Status: **design / documentation phase.** No code yet.
+> Status: **early development.** Map data and the Rust API server (game lifecycle, JSON save
+> files, replay) exist; the adjudicator and the GUI do not yet.
+
+## Development
+
+```bash
+cd server && cargo run -- --data-dir data/games   # API on http://127.0.0.1:8080
+cd server && cargo test                           # server tests
+npm install && npm test                           # map data tests (shared/map)
+```
+
+Each game is saved as one JSON file in the data directory; see
+[architecture.md § 5](docs/en/architecture.md#5-persistence-save-files).
 
 ## Documentation
 

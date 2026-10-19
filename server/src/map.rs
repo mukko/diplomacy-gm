@@ -1,0 +1,77 @@
+//! Standard map data, loaded from `shared/map/standard.json` (docs/en/map.md).
+
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::Power;
+
+pub const STANDARD_MAP_JSON: &str = include_str!("../../shared/map/standard.json");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProvinceType {
+    Land,
+    Coast,
+    Sea,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Province {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: ProvinceType,
+    pub supply_center: bool,
+    pub home: Option<Power>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coasts: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Adjacency {
+    pub army: BTreeMap<String, Vec<String>>,
+    pub fleet: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapData {
+    pub id: String,
+    pub name: String,
+    pub powers: Vec<Power>,
+    pub provinces: Vec<Province>,
+    pub adjacency: Adjacency,
+}
+
+impl MapData {
+    pub fn province(&self, id: &str) -> Option<&Province> {
+        self.provinces.iter().find(|p| p.id == id)
+    }
+
+    pub fn supply_centers(&self) -> impl Iterator<Item = &Province> {
+        self.provinces.iter().filter(|p| p.supply_center)
+    }
+}
+
+pub fn standard() -> &'static MapData {
+    static MAP: OnceLock<MapData> = OnceLock::new();
+    MAP.get_or_init(|| serde_json::from_str(STANDARD_MAP_JSON).expect("shared/map/standard.json is valid"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_standard_map() {
+        let map = standard();
+        assert_eq!(map.provinces.len(), 75);
+        assert_eq!(map.supply_centers().count(), 34);
+        assert_eq!(
+            map.province("StP").unwrap().coasts.as_deref(),
+            Some(&["NC".to_string(), "SC".to_string()][..])
+        );
+    }
+}

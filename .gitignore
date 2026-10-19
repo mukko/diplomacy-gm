@@ -10,3 +10,7 @@ coverage/
 
 # Do not commit the official rulebook PDF (copyrighted). Link to it instead.
 *.pdf
+
+# Rust build output and local save files
+target/
+data/

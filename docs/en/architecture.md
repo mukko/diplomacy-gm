@@ -1,6 +1,6 @@
 # Architecture (draft)
 
-> Status: **draft / proposal.** Technology choices marked *(proposed)* are not final.
+> Status: **draft / proposal.** Technology choices marked *(proposed)* are not final; those marked *(decided)* are.
 
 ## 1. Goal
 
@@ -29,11 +29,11 @@ Negotiation itself happens outside the tool (in person or elsewhere). The tool d
 
 | Component | Responsibility | Tech *(proposed)* |
 |-----------|----------------|-------------------|
-| `server/` | REST API, game lifecycle, persistence, calls adjudicator | TypeScript, Node.js (Hono or Fastify) |
-| `server/engine/` (or `engine/`) | Pure adjudicator: `adjudicate(state, orders) → Resolution`. No I/O. | TypeScript, Vitest; DATC + [test-cases.md](test-cases.md) |
+| `server/` | REST API, game lifecycle, persistence, calls adjudicator | **Rust** (axum, tokio, serde) *(decided)* |
+| Adjudicator (in or next to `server/`) | Pure adjudicator: `adjudicate(state, orders) → Resolution`. No I/O. Plugs into the server's `Adjudicator` trait. | Rust, `cargo test`; DATC + [test-cases.md](test-cases.md) |
 | `web/` | Map rendering, order entry, progress, trace replay | React + Vite, SVG map |
-| `shared/` | Types (`Order`, `GameState`, `Resolution`, `TraceStep`), map data (`standard.json`: provinces, coasts, adjacency, SVG coordinates) | TypeScript + JSON |
-| Persistence | Games, phases, submitted orders, resolutions | SQLite to start *(proposed)* |
+| `shared/` | Map data (`standard.json`: provinces, coasts, adjacency, later SVG coordinates), read by both server and GUI; TypeScript map types/tests for the GUI | JSON (+ TypeScript, Vitest) |
+| Persistence | One JSON save file per game (§ 5) | Files *(decided)* |
 
 The adjudicator is the authority: the GUI may pre-validate for usability, but the server re-validates everything.
 
@@ -58,10 +58,8 @@ create game ─▶ S1901M ─▶ [S1901R] ─▶ F1901M ─▶ [F1901R] ─▶ W
 ## 4. Core data model (sketch)
 
 ```jsonc
-// GameState
+// GameState (board position at the start of a phase; game ID and variant live in the save file, § 5)
 {
-  "gameId": "g_123",
-  "variant": "standard",          // or "2p-ww1", "6p-no-italy", …
   "phase": "F1901M",
   "units": [
     { "power": "RUS", "type": "F", "location": "StP", "coast": "SC" },
@@ -94,18 +92,62 @@ create game ─▶ S1901M ─▶ [S1901R] ─▶ F1901M ─▶ [F1901R] ─▶ W
 
 Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations ([map.md](map.md)).
 
-## 5. API (sketch)
+## 5. Persistence (save files)
+
+- **One game = one JSON file**, `<dataDir>/<gameId>.json` (server option `--data-dir`,
+  env `DIPLOMACY_GM_DATA_DIR`, default `data/games`). The file is the source of truth.
+- **Saved automatically:** every change (new game, order submission, resolution) is written back
+  immediately and atomically (temporary file + rename), so a crash never leaves a half-written save.
+- **Restoring:** a save file (on disk or uploaded) is parsed and **validated** before use: format and
+  version, game ID, known provinces/coasts, at most one unit per province (R-UNIT-03), and that the
+  history is consistent (each resolution's `nextState` equals the next recorded position). Invalid
+  data is rejected and nothing is written.
+- **Replay** needs nothing else: the history keeps the starting position, orders and `Resolution`
+  (incl. `trace`) of every resolved phase.
+
+```jsonc
+// <gameId>.json
+{
+  "format": "diplomacy-gm/game",
+  "formatVersion": 1,
+  "gameId": "g_…",
+  "title": "Friday game",
+  "variant": "standard",
+  "createdAt": "2026-10-19T12:00:00Z",
+  "updatedAt": "2026-10-19T13:10:00Z",
+  "state": { /* GameState: current, unresolved phase */ },
+  "orders": { "GER": [ /* Order */ ] },          // submitted so far for the current phase (secret)
+  "history": [                                    // resolved phases, oldest first
+    { "phase": "S1901M", "state": { /* GameState */ }, "orders": { /* per power */ },
+      "resolution": { /* Resolution */ }, "resolvedAt": "…" }
+  ]
+}
+```
+
+A replay **frame** is one entry of `history` (position + orders + resolution), followed by a final
+frame for the current position. Within a frame the GUI steps through `resolution.trace` (§ 7).
+
+## 6. API (sketch)
+
+Start screen: **New game** → `POST /games`; **Load** → `GET /games` then `GET /games/:id`
+(or `POST /games/import` with a save file); **Replay** → `GET /games/:id/replay`.
+Implemented so far: the routes marked ✔. Until the adjudicator exists, `resolve` returns `501`.
 
 | Method & path | Purpose |
 |---------------|---------|
-| `GET  /maps/standard` | Map data for rendering and client-side hints |
-| `POST /games` | Create a game (variant, power assignment, settings) |
-| `GET  /games/:id` | Current state and phase |
-| `GET  /games/:id/history` | All phases with orders and resolutions |
+| `GET  /maps/standard` ✔ | Map data for rendering and client-side hints |
+| `GET  /games` ✔ | Saved games (ID, title, phase, last update), newest first, plus save files that could not be read |
+| `POST /games` ✔ | Create a game and its save file (title; later: variant, power assignment, settings) |
+| `GET  /games/:id` ✔ | Restore from the save file: current state, phase, which powers have submitted (orders stay secret) |
+| `GET  /games/:id/save` ✔ | Download the complete save file (GM only once roles exist: it contains unresolved orders) |
+| `POST /games/import` ✔ | Restore a game from an uploaded save file (validated); `?asNew=true` stores it under a new ID |
+| `GET  /games/:id/history` ✔ | All phases with orders and resolutions |
+| `GET  /games/:id/replay` ✔ | Replay frames (§ 5) |
+| `GET  /games/:id/replay/:index` ✔ | One replay frame |
 | `GET  /games/:id/units/:prov/options` | Legal orders for a unit (helps order entry UI) |
-| `PUT  /games/:id/phases/:phase/orders/:power` | Submit/replace a power's orders; returns per-order validation. The GM may also call this for any power (e.g. manual disbands for a power in civil disorder, PR-08) |
+| `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders; returns per-order validation. The GM may also call this for any power (e.g. manual disbands for a power in civil disorder, PR-08) |
 | `GET  /games/:id/phases/:phase/default-disbands` | GM only: automatically proposed disbands per power (R-CD-03 / PR-08), for review before resolving |
-| `POST /games/:id/phases/:phase/resolve` | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
+| `POST /games/:id/phases/:phase/resolve` ✔ | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
 | `GET  /games/:id/phases/:phase/resolution` | Fetch a past resolution for replay |
 | `PUT  /games/:id/civil-disorder/:power` | GM only: declare civil disorder for a power from the current phase (PR-16) |
 | `DELETE /games/:id/civil-disorder/:power` | GM only: lift civil disorder (e.g. replacement player) |
@@ -114,18 +156,19 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
 Secret simultaneous orders: until a phase is resolved, a power's orders are only visible to that power and the GM.
 (Authentication/roles: TBD.)
 
-## 6. GUI
+## 7. GUI
 
 | Area | Features |
 |------|----------|
+| Start screen | New game / load a saved game (list or file upload) / replay a game |
 | Map | SVG map; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
 | Order input | Select unit → choose order type → click target(s); shows legal options from the server; text entry as alternative |
 | Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05), civil-disorder badges |
 | GM controls | Resolve phase, declare / lift civil disorder per power (PR-16), review automatically proposed disbands and override them manually (PR-08) |
 | Resolution replay | Step through `trace` (prev / next / play): highlight orders, show strengths, cut supports, bounces, dislodgements with rule IDs |
-| History | Browse past phases and their maps/orders |
+| History / replay | Browse past phases and their maps/orders frame by frame (§ 5); export the save file |
 
-## 7. Development principles
+## 8. Development principles
 
 - **Rules are the spec.** Every engine behaviour must trace back to a rule ID or a project ruling (PR-xx).
 - **Test first for the engine.** Each rulebook example in [test-cases.md](test-cases.md) and the relevant DATC cases become unit tests.
