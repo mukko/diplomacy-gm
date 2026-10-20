@@ -191,3 +191,28 @@ See [rules.md § 15](rules.md#15-starting-position-spring-1901). Russia's fleet 
 | Turkey | yellow |
 
 The GUI may use different colours for readability, but should keep this mapping recognisable.
+
+## 7. Drawing the map (GUI assets)
+
+The GUI has two views of the board, built from the same data:
+
+| View | File | Use |
+|------|------|-----|
+| **Map** (main) | `shared/map/standard.svg` | The board players look at. |
+| **Graph** (auxiliary) | `shared/map/standard.graph.svg` | Provinces as nodes and adjacencies as edges (army, fleet or both); split coasts are separate nodes. Used to check adjacency and to debug resolutions. |
+
+- `standard.svg` is adapted from "Diplomacy.svg" by Martin Asal (Wikimedia Commons, **CC BY-SA 3.0**).
+  The adapted map files are under the same licence; the rest of the repository is not affected.
+  See [`shared/map/CREDITS.md`](../../shared/map/CREDITS.md).
+- Structure of `standard.svg`: one `<g id="prov-<ID>" class="province land|coast|sea" data-province="<ID>">`
+  per province (plus `prov-Swi`, impassable); split coasts are separate areas
+  `id="coast-<ID>-<NC|SC|EC>"`; supply-centre markers `id="sc-<ID>"`; labels `id="label-<ID>"`.
+  The GUI colours provinces and SC markers by owner and draws units itself.
+- `standard.layout.json`: for each province the position of a unit, its label and its SC marker; for each
+  split coast the position of a fleet there. One province holds at most one unit (R-UNIT-03), so the army
+  position and a coast position may coincide.
+- All three files are **generated** by `tools/map/build_map.py` from the pinned source file
+  (`shared/map/source/Diplomacy.commons.svg`) and `standard.json`; do not edit them by hand. Re-run
+  `python3 -I tools/map/build_map.py` after changing `standard.json`. Tests: `shared/map/layout.test.ts`.
+- Which part of a split province is which coast was checked visually: Bulgaria's northern part
+  (Black Sea side) is EC, Spain's and St. Petersburg's northern parts are NC.

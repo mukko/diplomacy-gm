@@ -90,3 +90,29 @@ export function resolveFleetDestination(from: string, to: string): FleetDestinat
   if (coasts.length > 1) return { ok: false, reason: "coast-required" };
   return { ok: true, location: `${province}/${coasts[0]}` };
 }
+
+// ----- Map drawing (docs/en/map.md § 7) ----------------------------------------------------------
+
+import layoutData from "./standard.layout.json";
+
+export type Point = [number, number];
+
+export interface MapLayout {
+  map: string;
+  /** Base map SVG next to this file: one `<g id="prov-<ID>">` per province. */
+  svg: string;
+  viewBox: [number, number, number, number];
+  source: { file: string; url: string; author: string; license: string; sha256: string };
+  provinces: Record<string, { unit: Point; label: Point; sc: Point | null }>;
+  /** Fleet positions on split coasts, keyed `Prov/Coast`. */
+  coasts: Record<string, { unit: Point }>;
+}
+
+export const standardLayout = layoutData as unknown as MapLayout;
+
+/** Where to draw a unit at `location` (`"Par"`, or `"Spa/NC"` for a fleet on a split coast). */
+export function unitPosition(location: string): Point | undefined {
+  return location.includes("/")
+    ? standardLayout.coasts[location]?.unit
+    : standardLayout.provinces[location]?.unit;
+}

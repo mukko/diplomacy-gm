@@ -35,7 +35,7 @@ Scope *(decided)*: the standard 7-player game only. The variants for fewer playe
 | `server/` | REST API, game lifecycle, persistence, calls adjudicator | **Rust** (axum, tokio, serde) *(decided)* |
 | Adjudicator (`server/src/engine/`) | Pure adjudicator: `adjudicate(state, orders) → Resolution`. No I/O. Plugs into the server's `Adjudicator` trait. | Rust, `cargo test`; DATC + [test-cases.md](test-cases.md) |
 | `web/` | Map rendering, order entry, progress, trace replay | React + Vite, SVG map |
-| `shared/` | Map data (`standard.json`: provinces, coasts, adjacency, later SVG coordinates), read by both server and GUI; TypeScript map types/tests for the GUI | JSON (+ TypeScript, Vitest) |
+| `shared/` | Map data (`standard.json`: provinces, coasts, adjacency), read by both server and GUI; map drawing assets for the GUI (`standard.svg`, `standard.layout.json`, `standard.graph.svg`, see [map.md § 7](map.md#7-drawing-the-map-gui-assets)); TypeScript map types/tests | JSON, SVG (+ TypeScript, Vitest) |
 | Persistence | One JSON save file per game (§ 5) | Files *(decided)* |
 | Deployment | Runs locally on the GM's machine for a single user; listens on `127.0.0.1` only; no authentication or roles (§ 6) | *(decided)* |
 
@@ -179,7 +179,7 @@ hides one power's orders from the others on screen is a display question for the
 | Area | Features |
 |------|----------|
 | Start screen | New game / load a saved game (list or file upload) / replay a game |
-| Map | SVG map; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
+| Map | SVG map (`standard.svg`) as the main view, with a switch to the adjacency **graph view** (`standard.graph.svg`) as an auxiliary view; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
 | Order input | Select unit → choose order type → click target(s); shows legal options from the server; text entry as alternative |
 | Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05), civil-disorder badges |
 | GM controls | Resolve phase, declare / lift civil disorder per power (PR-16), review automatically proposed disbands and override them manually (PR-08) |

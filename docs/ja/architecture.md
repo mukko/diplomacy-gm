@@ -37,7 +37,7 @@
 | `server/` | REST API、ゲームのライフサイクル、永続化、裁定器の呼び出し | **Rust**（axum、tokio、serde） *（決定）* |
 | 裁定器（`server/src/engine/`） | 純粋な裁定器: `adjudicate(state, orders) → Resolution`。I/O なし。サーバーの `Adjudicator` トレイトに差し込む。 | Rust、`cargo test`。DATC ＋ [test-cases.md](test-cases.md) |
 | `web/` | 地図描画、命令入力、進行状況、トレース再生 | React ＋ Vite、SVG 地図 |
-| `shared/` | マップデータ（`standard.json`: 地域・海岸・隣接、のちに SVG 座標）。サーバーと GUI の両方が読む。GUI 用の TypeScript のマップ型とテスト | JSON（＋ TypeScript、Vitest） |
+| `shared/` | マップデータ（`standard.json`: 地域・海岸・隣接）。サーバーと GUI の両方が読む。GUI 用の地図描画アセット（`standard.svg`、`standard.layout.json`、`standard.graph.svg`。[map.md](map.md) §7 参照）。TypeScript のマップ型とテスト | JSON、SVG（＋ TypeScript、Vitest） |
 | 永続化 | 1 ゲームにつき 1 つの JSON セーブファイル（§ 5） | ファイル *（決定）* |
 | 運用 | GM のマシン上で1人で使うローカル実行。`127.0.0.1` でのみ待ち受ける。認証・ロールなし（§ 6） | *（決定）* |
 
@@ -174,7 +174,7 @@
 | 領域 | 機能 |
 |------|------|
 | スタート画面 | 新規ゲーム／保存済みゲームのロード（一覧またはファイルのアップロード）／ゲームの再生 |
-| 地図 | SVG 地図。ユニット（A/F の形、列強の色）、補給都市の支配、分割海岸。クリックでユニット／地域を選択 |
+| 地図 | SVG 地図（`standard.svg`）をメイン表示とし、補助として隣接の**グラフ表示**（`standard.graph.svg`）に切り替えられる。ユニット（A/F の形、列強の色）、補給都市の支配、分割海岸。クリックでユニット／地域を選択 |
 | 命令入力 | ユニット選択 → 命令種別選択 → 対象をクリック。サーバーから得た合法な選択肢を表示。テキスト入力も可 |
 | 進行状況 | 現在のフェイズ、年／季節、列強ごとの提出状況、補給都市数、タイマー（R-TURN-05）、内乱バッジ |
 | GM 操作 | フェイズの解決、列強ごとの内乱の宣言／解除（PR-16）、自動選択された解散候補の確認と手動での変更（PR-08） |

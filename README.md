@@ -40,3 +40,8 @@ English documents are the source of truth; Japanese documents mirror them.
 <https://media.wizards.com/2015/downloads/ah/diplomacy_rules.pdf>.
 The documents here paraphrase the rules for implementation purposes; the rulebook PDF itself is
 not included in this repository. *Diplomacy* is a trademark of Hasbro.
+
+## Map credits
+
+The board map is adapted from "Diplomacy.svg" by Martin Asal (Wikimedia Commons), licensed under
+CC BY-SA 3.0; the adapted map files are under the same licence. See [shared/map/CREDITS.md](shared/map/CREDITS.md).

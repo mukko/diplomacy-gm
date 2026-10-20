@@ -39,3 +39,8 @@ npm install && npm test                           # マップデータのテス�
 <https://media.wizards.com/2015/downloads/ah/diplomacy_rules.pdf>
 本リポジトリのドキュメントは実装のためにルールを言い換えたものであり、ルールブックの PDF 自体は含みません。
 *Diplomacy* は Hasbro の商標です。
+
+## 地図のクレジット
+
+盤面の地図は Martin Asal 作「Diplomacy.svg」（Wikimedia Commons、CC BY-SA 3.0）を改変したもので、
+改変した地図ファイルも同じライセンスです。[shared/map/CREDITS.md](shared/map/CREDITS.md) を参照してください。

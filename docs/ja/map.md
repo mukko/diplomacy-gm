@@ -190,3 +190,26 @@
 | トルコ | 黄 |
 
 GUI では視認性のために異なる色を使ってもよいが、この対応が分かるようにしてください。
+
+## 7. 地図の描画（GUI 用アセット）
+
+GUI は同じデータから作った2種類の盤面表示を持ちます:
+
+| 表示 | ファイル | 用途 |
+|------|----------|------|
+| **地図**（メイン） | `shared/map/standard.svg` | プレイヤーが見る盤面。 |
+| **グラフ**（補助） | `shared/map/standard.graph.svg` | 地域をノード、隣接を線（陸軍／艦隊／両方）で表示。分割海岸は別ノード。隣接データの確認と裁定結果のデバッグに使う。 |
+
+- `standard.svg` は Martin Asal 作「Diplomacy.svg」（Wikimedia Commons、**CC BY-SA 3.0**）を改変したもの。
+  改変した地図ファイルは同じライセンスとし、リポジトリのほかの部分には影響しない。
+  [`shared/map/CREDITS.md`](../../shared/map/CREDITS.md) 参照。
+- `standard.svg` の構造: 地域ごとに `<g id="prov-<ID>" class="province land|coast|sea" data-province="<ID>">`
+  （ほかに通行不能の `prov-Swi`）。分割海岸は別の領域 `id="coast-<ID>-<NC|SC|EC>"`、補給都市の印は
+  `id="sc-<ID>"`、ラベルは `id="label-<ID>"`。地域と補給都市の印の色分けとユニットの描画は GUI が行う。
+- `standard.layout.json`: 地域ごとのユニット・ラベル・補給都市の印の位置と、分割海岸ごとの艦隊の位置。
+  1地域に置けるユニットは1つ（R-UNIT-03）なので、陸軍の位置と海岸の位置が重なることはあり得る。
+- 3ファイルとも、固定した元ファイル（`shared/map/source/Diplomacy.commons.svg`）と `standard.json` から
+  `tools/map/build_map.py` で**生成**する。手で編集しないこと。`standard.json` を変えたら
+  `python3 -I tools/map/build_map.py` を再実行する。テスト: `shared/map/layout.test.ts`。
+- 分割海岸のどちらの部分がどの海岸かは目視で確認済み: ブルガリアの北側（黒海側）が東岸、スペインと
+  サンクトペテルブルクの北側が北岸。
