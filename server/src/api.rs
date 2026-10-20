@@ -17,9 +17,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::adjudicator::{AdjudicationError, Adjudicator};
+use crate::engine::options;
 use crate::game::{Game, GameError, new_game_id};
 use crate::map;
-use crate::model::{GameState, Order, Phase, Power};
+use crate::model::{GameState, Order, Phase, PhaseKind, Power};
 use crate::store::{GameStore, StoreError};
 
 #[derive(Clone)]
@@ -40,6 +41,13 @@ pub fn router(state: AppState) -> Router {
         .route("/games/{id}/replay/{index}", get(get_replay_frame))
         .route("/games/{id}/phases/{phase}/orders/{power}", put(submit_orders))
         .route("/games/{id}/phases/{phase}/resolve", post(resolve_phase))
+        .route("/games/{id}/phases/{phase}/default-disbands", get(get_default_disbands))
+        .route("/games/{id}/units/{prov}/options", get(get_unit_options))
+        .route("/games/{id}/powers/{power}/options", get(get_power_options))
+        .route(
+            "/games/{id}/civil-disorder/{power}",
+            put(declare_civil_disorder).delete(lift_civil_disorder),
+        )
         .with_state(state)
 }
 
@@ -245,4 +253,89 @@ async fn resolve_phase(
         g.resolve(phase, adjudicator.as_ref()).map(|r| r.resolution.clone())
     })?;
     Ok(Json(resolution))
+}
+
+/// Legal orders for one unit in the current phase (a dislodged unit in a retreat phase).
+async fn get_unit_options(
+    State(app): State<AppState>,
+    Path((id, prov)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let game = app.store.load(&id)?;
+    let opts = options::unit_options(&game.state, &prov).ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not-found",
+            format!("no unit to order in {prov} in {}", game.state.phase),
+        )
+    })?;
+    Ok(Json(json!({ "phase": game.state.phase, "options": opts })))
+}
+
+/// Legal orders for all of a power's units, plus its builds in an adjustment phase.
+async fn get_power_options(
+    State(app): State<AppState>,
+    Path((id, power)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let power: Power = parse_path(&power)?;
+    let game = app.store.load(&id)?;
+    Ok(Json(
+        json!({ "phase": game.state.phase, "options": options::power_options(&game.state, power) }),
+    ))
+}
+
+/// Disbands the engine would choose (R-CD-03 / PR-08), after the disbands already submitted.
+async fn get_default_disbands(
+    State(app): State<AppState>,
+    Path((id, phase)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let phase: Phase = parse_path(&phase)?;
+    let game = app.store.load(&id)?;
+    if phase != game.state.phase {
+        return Err(GameError::PhaseMismatch {
+            expected: game.state.phase,
+            got: phase,
+        }
+        .into());
+    }
+    if phase.kind != PhaseKind::Adjustment {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "not-adjustment-phase",
+            format!("{phase} is not an adjustment phase"),
+        ));
+    }
+    let orders: Vec<Order> = game.orders.values().flatten().cloned().collect();
+    Ok(Json(
+        json!({ "phase": phase, "proposals": options::default_disbands(&game.state, &orders) }),
+    ))
+}
+
+/// Declare civil disorder for a power from the current phase (PR-16).
+async fn declare_civil_disorder(
+    State(app): State<AppState>,
+    Path((id, power)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let power: Power = parse_path(&power)?;
+    let (changed, state) = app.store.update(&id, |g| {
+        let changed = g.declare_civil_disorder(power)?;
+        Ok((changed, g.state.clone()))
+    })?;
+    Ok(Json(
+        json!({ "power": power, "changed": changed, "phase": state.phase, "civilDisorder": state.civil_disorder }),
+    ))
+}
+
+/// Lift civil disorder for a power from the current phase on (PR-16).
+async fn lift_civil_disorder(
+    State(app): State<AppState>,
+    Path((id, power)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let power: Power = parse_path(&power)?;
+    let (changed, state) = app.store.update(&id, |g| {
+        let changed = g.lift_civil_disorder(power)?;
+        Ok((changed, g.state.clone()))
+    })?;
+    Ok(Json(
+        json!({ "power": power, "changed": changed, "phase": state.phase, "civilDisorder": state.civil_disorder }),
+    ))
 }

@@ -106,7 +106,7 @@
   書き戻す。クラッシュしても書きかけのセーブは残らない。
 - **復元:** セーブファイル（ディスク上またはアップロード）は使用前に読み込んで**検証**する: 形式とバージョン、
   ゲーム ID、既知の地域・海岸、1 地域 1 ユニット（R-UNIT-03）、履歴の整合性（各解決結果の `nextState` が
-  次に記録された盤面と一致すること）。不正なデータは拒否し、何も書き込まない。
+  次に記録された盤面と一致すること。ただし `civilDisorder` はフェイズの間に GM が変更できるので比較しない）。不正なデータは拒否し、何も書き込まない。
 - **再生**に追加データは不要: 履歴には解決済みの各フェイズの開始時の盤面、命令、`Resolution`（`trace` を含む）が残る。
 
 ```jsonc
@@ -148,13 +148,13 @@
 | `GET  /games/:id/history` ✔ | 全フェイズの命令と解決結果 |
 | `GET  /games/:id/replay` ✔ | 再生フレーム（§ 5） |
 | `GET  /games/:id/replay/:index` ✔ | 再生フレーム 1 つ |
-| `GET  /games/:id/units/:prov/options` | ユニットの合法な命令一覧（命令入力 UI の補助） |
+| `GET  /games/:id/units/:prov/options` ✔ | 現在のフェイズで1つのユニットに出せる合法な命令の一覧。裁定器と同じ検証で確かめた、そのまま提出できる `Order` の形で返す。移動フェイズ: 維持、移動（分割海岸の移動先は海岸付き。輸送が可能なら `viaConvoy` 付きの候補も）、維持支援と移動支援（支援対象のユニットが合法に命令できる移動に限る）、輸送（この艦隊を通る経路がありうるものに限る）。撤退フェイズ: 撃退されたユニットの撤退先と解散。調整フェイズ: その列強に解散が必要なら解散。内乱中の列強は `civilDisorder: true` で命令は空（PR-16）。ユニットがなければ `404` |
+| `GET  /games/:id/powers/:power/options` ✔ | 列強の全ユニットについて同じもの（撤退フェイズでは撃退されたユニット）。調整フェイズではさらに `adjustment`（補給都市数 − ユニット数）と `builds`（合法な建設すべて: 本国補給都市 × 種別 × 海岸、および建設放棄の命令）。内乱中は `builds` は空 |
 | `PUT  /games/:id/phases/:phase/orders/:power` ✔ | 列強の命令を提出／置換。命令ごとの検証結果を返す。どの列強についても呼び出せる（内乱中の列強の解散の手動入力を含む、PR-08） |
-| `GET  /games/:id/phases/:phase/default-disbands` | 自動選択された列強ごとの解散候補（R-CD-03 / PR-08）。解決前の確認用 |
+| `GET  /games/:id/phases/:phase/default-disbands` ✔ | 現在の調整フェイズで、解散が必要な列強ごとに `required`（必要数）、`ordered`（採用される提出済みの解散命令。GM の入力分など）、`proposed`（残りについてエンジンが解散するユニットと PR-08 の距離）を返す（R-CD-03 / PR-08 / PR-09）。`:phase` が現在のフェイズでなければ `409 phase-mismatch`、移動・撤退フェイズでは `409 not-adjustment-phase` |
 | `POST /games/:id/phases/:phase/resolve` ✔ | 裁定。`Resolution`（`trace` を含む）を返し、ゲームを進める |
-| `GET  /games/:id/phases/:phase/resolution` | 再生用に過去の解決結果を取得 |
-| `PUT  /games/:id/civil-disorder/:power` | 現在のフェイズから列強の内乱を宣言（PR-16） |
-| `DELETE /games/:id/civil-disorder/:power` | 内乱を解除（交代プレイヤー参加時など） |
+| `PUT  /games/:id/civil-disorder/:power` ✔ | 現在のフェイズから列強の内乱を宣言（PR-16）。`state.civilDisorder` に記録する（`since` = 現在のフェイズ）ため、セーブファイルに保存され、以後のフェイズに引き継がれ、各フェイズの開始時の盤面として履歴と再生にも残る。宣言済みなら変更なし（`changed: false`） |
+| `DELETE /games/:id/civil-disorder/:power` ✔ | 現在のフェイズ以降の内乱を解除（交代プレイヤー参加時など）。解決済みのフェイズの記録には残る。宣言されていなければ `changed: false` |
 | `POST /adjudicate` | ステートレス: `{state, orders}` → `Resolution`（サンドボックス、テスト、「もしも」検討） |
 
 運用とアクセス *（決定）*: GM のマシン上でローカルに実行する、GM 1人用のツール。サーバーは

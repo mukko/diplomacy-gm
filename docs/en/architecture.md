@@ -104,7 +104,8 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
   immediately and atomically (temporary file + rename), so a crash never leaves a half-written save.
 - **Restoring:** a save file (on disk or uploaded) is parsed and **validated** before use: format and
   version, game ID, known provinces/coasts, at most one unit per province (R-UNIT-03), and that the
-  history is consistent (each resolution's `nextState` equals the next recorded position). Invalid
+  history is consistent (each resolution's `nextState` equals the next recorded position, except for
+  `civilDisorder`, which the GM may change between phases). Invalid
   data is rejected and nothing is written.
 - **Replay** needs nothing else: the history keeps the starting position, orders and `Resolution`
   (incl. `trace`) of every resolved phase.
@@ -148,13 +149,13 @@ Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retre
 | `GET  /games/:id/history` ✔ | All phases with orders and resolutions |
 | `GET  /games/:id/replay` ✔ | Replay frames (§ 5) |
 | `GET  /games/:id/replay/:index` ✔ | One replay frame |
-| `GET  /games/:id/units/:prov/options` | Legal orders for a unit (helps order entry UI) |
+| `GET  /games/:id/units/:prov/options` ✔ | Legal orders for one unit in the current phase, as ready-to-submit `Order` objects checked with the adjudicator's own validation. Movement: hold, moves (split-coast destinations with their coast; `viaConvoy` variants where a convoy is possible), hold and move supports (only for moves the supported unit can legally be ordered to make), convoys (only for routes that can pass through this fleet). Retreat: the dislodged unit's retreat options and disband. Adjustment: disband, if its power must remove units. A power in civil disorder gets `civilDisorder: true` and no orders (PR-16). `404` if there is no such unit |
+| `GET  /games/:id/powers/:power/options` ✔ | The same for every unit of a power (dislodged units in a retreat phase). In an adjustment phase also `adjustment` (SCs − units) and `builds`: each legal build (home SC × unit type × coast) plus a waive order; empty in civil disorder |
 | `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders; returns per-order validation. Works for any power, including manual disbands for a power in civil disorder (PR-08) |
-| `GET  /games/:id/phases/:phase/default-disbands` | Automatically proposed disbands per power (R-CD-03 / PR-08), for review before resolving |
+| `GET  /games/:id/phases/:phase/default-disbands` ✔ | For the current adjustment phase: each power that must remove units, with `required`, `ordered` (submitted disband orders that will be used, e.g. entered by the GM) and `proposed` (units the engine will remove for the rest, with their PR-08 distance) — R-CD-03 / PR-08 / PR-09. `409 phase-mismatch` if `:phase` is not the current phase, `409 not-adjustment-phase` for movement and retreat phases |
 | `POST /games/:id/phases/:phase/resolve` ✔ | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
-| `GET  /games/:id/phases/:phase/resolution` | Fetch a past resolution for replay |
-| `PUT  /games/:id/civil-disorder/:power` | Declare civil disorder for a power from the current phase (PR-16) |
-| `DELETE /games/:id/civil-disorder/:power` | Lift civil disorder (e.g. replacement player) |
+| `PUT  /games/:id/civil-disorder/:power` ✔ | Declare civil disorder for a power from the current phase (PR-16). Stored in `state.civilDisorder` (`since` = current phase), so it is saved, carried into later phases and kept in the history and replay through each phase's starting position. Declaring again changes nothing (`changed: false`) |
+| `DELETE /games/:id/civil-disorder/:power` ✔ | Lift civil disorder from the current phase on (e.g. replacement player); phases already resolved keep it in their records. `changed: false` if it was not declared |
 | `POST /adjudicate` | Stateless: `{state, orders}` → `Resolution` (sandbox, tests, "what-if") |
 
 Deployment and access *(decided)*: a single-user tool for the GM, run locally on the GM's machine.

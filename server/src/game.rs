@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::adjudicator::{AdjudicationError, Adjudicator};
 use crate::map;
-use crate::model::{GameState, Order, Phase, PhaseKind, Power, Resolution};
+use crate::model::{CivilDisorder, GameState, Order, Phase, PhaseKind, Power, Resolution};
 
 pub const SAVE_FORMAT: &str = "diplomacy-gm/game";
 pub const SAVE_FORMAT_VERSION: u32 = 1;
@@ -151,6 +151,42 @@ impl Game {
         Ok(())
     }
 
+    /// Declare civil disorder for `power` from the current phase (PR-16). Already declared → no
+    /// change. Returns whether the declaration was added.
+    pub fn declare_civil_disorder(&mut self, power: Power) -> Result<bool, GameError> {
+        self.check_not_over()?;
+        if self.state.civil_disorder.iter().any(|c| c.power == power) {
+            return Ok(false);
+        }
+        self.state.civil_disorder.push(CivilDisorder {
+            power,
+            since: self.state.phase,
+        });
+        self.state.civil_disorder.sort_by_key(|c| c.power);
+        self.updated_at = Utc::now();
+        Ok(true)
+    }
+
+    /// Lift civil disorder for `power` from the current phase on (PR-16). Returns whether it
+    /// was declared.
+    pub fn lift_civil_disorder(&mut self, power: Power) -> Result<bool, GameError> {
+        self.check_not_over()?;
+        let before = self.state.civil_disorder.len();
+        self.state.civil_disorder.retain(|c| c.power != power);
+        let lifted = self.state.civil_disorder.len() != before;
+        if lifted {
+            self.updated_at = Utc::now();
+        }
+        Ok(lifted)
+    }
+
+    fn check_not_over(&self) -> Result<(), GameError> {
+        if self.state.winner.is_some() {
+            return Err(GameError::GameOver);
+        }
+        Ok(())
+    }
+
     /// Adjudicate the current phase, append it to the history and advance to the next state.
     pub fn resolve(&mut self, phase: Phase, adjudicator: &dyn Adjudicator) -> Result<&PhaseRecord, GameError> {
         self.check_phase(phase)?;
@@ -230,7 +266,9 @@ impl Game {
                 return bad(format!("history[{i}]: phase mismatch in {}", record.phase));
             }
             let next = self.history.get(i + 1).map(|r| &r.state).unwrap_or(&self.state);
-            if &record.resolution.next_state != next {
+            // Civil disorder may be declared or lifted between phases (PR-16), so the following
+            // position may differ from the resolution's result in that list only.
+            if !same_position(&record.resolution.next_state, next) {
                 return bad(format!(
                     "history[{i}] ({}): result does not match the following position",
                     record.phase
@@ -261,6 +299,14 @@ impl Game {
         }
         Ok(())
     }
+}
+
+fn same_position(a: &GameState, b: &GameState) -> bool {
+    let without_disorder = |s: &GameState| GameState {
+        civil_disorder: Vec::new(),
+        ..s.clone()
+    };
+    without_disorder(a) == without_disorder(b)
 }
 
 fn check_state(state: &GameState) -> Result<(), String> {

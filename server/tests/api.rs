@@ -579,3 +579,200 @@ async fn map_endpoint_serves_shared_map() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(map["provinces"].as_array().unwrap().len(), 75);
 }
+
+#[tokio::test]
+async fn unit_and_power_options() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+
+    let (status, res) = call(&app, Method::GET, &format!("/games/{id}/units/Par/options"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["phase"], "S1901M");
+    assert_eq!(res["options"]["unit"]["location"], "Par");
+    let orders = res["options"]["orders"].as_array().unwrap();
+    let mut moves: Vec<&str> = orders
+        .iter()
+        .filter(|o| o["type"] == "move")
+        .map(|o| o["to"].as_str().unwrap())
+        .collect();
+    moves.sort();
+    assert_eq!(moves, ["Bre", "Bur", "Gas", "Pic"]);
+    assert!(orders.iter().all(|o| o["power"] == "FRA" && o["unit"] == "Par"));
+
+    // The offered orders can be submitted as they are.
+    let body = serde_json::to_string(&vec![orders[1].clone()]).unwrap();
+    let (status, _) = call(
+        &app,
+        Method::PUT,
+        &format!("/games/{id}/phases/S1901M/orders/FRA"),
+        Some(body),
+    )
+    .await;
+    assert!(status.is_success());
+
+    let (status, _) = call(&app, Method::GET, &format!("/games/{id}/units/Bel/options"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, res) = call(&app, Method::GET, &format!("/games/{id}/powers/RUS/options"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["options"]["units"].as_array().unwrap().len(), 4);
+    assert_eq!(res["options"]["builds"], json!([]));
+    assert!(res["options"].get("adjustment").is_none());
+
+    let (status, _) = call(&app, Method::GET, &format!("/games/{id}/powers/XXX/options"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn civil_disorder_is_saved_applied_and_kept_in_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let uri = format!("/games/{id}/civil-disorder/ITA");
+
+    let (status, res) = call(&app, Method::PUT, &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["changed"], true);
+    assert_eq!(res["civilDisorder"], json!([{ "power": "ITA", "since": "S1901M" }]));
+    let (_, res) = call(&app, Method::PUT, &uri, None).await;
+    assert_eq!(res["changed"], false, "declaring twice changes nothing");
+    assert_eq!(read_save(dir.path(), &id)["state"]["civilDisorder"][0]["power"], "ITA");
+
+    // Italian orders are ignored while civil disorder is declared (PR-16).
+    let ita = r#"[{ "power": "ITA", "unit": "Ven", "type": "move", "to": "Pie" }]"#;
+    call(
+        &app,
+        Method::PUT,
+        &format!("/games/{id}/phases/S1901M/orders/ITA"),
+        Some(ita.into()),
+    )
+    .await;
+    let (_, res) = call(&app, Method::POST, &format!("/games/{id}/phases/S1901M/resolve"), None).await;
+    assert_eq!(res["orders"][0]["valid"], false);
+    assert!(
+        res["nextState"]["units"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|u| u["location"] == "Ven")
+    );
+    assert_eq!(
+        res["nextState"]["civilDisorder"][0]["since"], "S1901M",
+        "carried into the next phase"
+    );
+
+    // Lift it in F1901M; the S1901M record keeps the declaration.
+    let (status, res) = call(&app, Method::DELETE, &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (res["changed"].clone(), res["civilDisorder"].clone()),
+        (json!(true), json!([]))
+    );
+    let (_, history) = call(&app, Method::GET, &format!("/games/{id}/history"), None).await;
+    assert_eq!(history["history"][0]["state"]["civilDisorder"][0]["power"], "ITA");
+    let (_, replay) = call(&app, Method::GET, &format!("/games/{id}/replay"), None).await;
+    assert_eq!(replay["frames"][0]["state"]["civilDisorder"][0]["power"], "ITA");
+    assert_eq!(replay["frames"][1]["state"]["civilDisorder"], json!([]));
+
+    // The save still validates: export and re-import it.
+    let (status, save) = call(&app, Method::GET, &format!("/games/{id}/save"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, res) = call(&app, Method::POST, "/games/import?asNew=true", Some(save.to_string())).await;
+    assert_eq!(status, StatusCode::CREATED, "{res}");
+
+    let (status, _) = call(&app, Method::PUT, &format!("/games/{id}/civil-disorder/XXX"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn default_disbands_in_an_adjustment_phase() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+
+    let (status, res) = call(
+        &app,
+        Method::GET,
+        &format!("/games/{id}/phases/S1901M/default-disbands"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(res["error"], "not-adjustment-phase");
+    let (status, res) = call(
+        &app,
+        Method::GET,
+        &format!("/games/{id}/phases/W1901A/default-disbands"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(res["error"], "phase-mismatch");
+
+    // A Winter position where Russia has lost three SCs and must remove three of four units.
+    let mut game = Game::new_standard(Some("winter".into()));
+    game.state.phase = "W1901A".parse().unwrap();
+    for sc in ["StP", "Mos", "War"] {
+        game.state.supply_centers.insert(sc.into(), None);
+    }
+    let save = serde_json::to_string(&game).unwrap();
+    let (status, res) = call(&app, Method::POST, "/games/import", Some(save)).await;
+    assert_eq!(status, StatusCode::CREATED, "{res}");
+    let wid = game.game_id;
+    let uri = format!("/games/{wid}/phases/W1901A/default-disbands");
+
+    let (status, res) = call(&app, Method::GET, &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    let proposals = res["proposals"].as_array().unwrap();
+    assert_eq!(proposals.len(), 1);
+    assert_eq!(proposals[0]["power"], "RUS");
+    assert_eq!(proposals[0]["required"], 3);
+    assert_eq!(proposals[0]["proposed"].as_array().unwrap().len(), 3);
+
+    // A disband entered by the GM is used first; the engine proposes the rest.
+    let rus = r#"[{ "power": "RUS", "unit": "Sev", "type": "disband" }]"#;
+    call(
+        &app,
+        Method::PUT,
+        &format!("/games/{wid}/phases/W1901A/orders/RUS"),
+        Some(rus.into()),
+    )
+    .await;
+    let (_, res) = call(&app, Method::GET, &uri, None).await;
+    assert_eq!(res["proposals"][0]["ordered"], json!(["F Sev"]));
+    assert_eq!(res["proposals"][0]["proposed"].as_array().unwrap().len(), 2);
+
+    // Resolving removes exactly the ordered and proposed units.
+    let proposed: Vec<String> = res["proposals"][0]["proposed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            p["unit"]
+                .as_str()
+                .unwrap()
+                .split(' ')
+                .nth(1)
+                .unwrap()
+                .split('/')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    let (status, res) = call(&app, Method::POST, &format!("/games/{wid}/phases/W1901A/resolve"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    let left: Vec<&str> = res["nextState"]["units"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|u| u["power"] == "RUS")
+        .map(|u| u["location"].as_str().unwrap())
+        .collect();
+    assert_eq!(left.len(), 1);
+    assert!(
+        !left.contains(&"Sev") && proposed.iter().all(|p| !left.contains(&p.as_str())),
+        "{left:?}"
+    );
+}

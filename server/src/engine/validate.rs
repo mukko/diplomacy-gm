@@ -173,9 +173,9 @@ pub(crate) fn check(state: &GameState, orders: &[Order]) -> Checked {
     }
 }
 
-type Invalid = (String, Vec<&'static str>);
+pub(crate) type Invalid = (String, Vec<&'static str>);
 
-fn validate(state: &GameState, u: usize, kind: &OrderKind) -> Result<Cmd, Invalid> {
+pub(crate) fn validate(state: &GameState, u: usize, kind: &OrderKind) -> Result<Cmd, Invalid> {
     let unit = &state.units[u];
     let here = unit.location.as_str();
     match kind {
@@ -302,24 +302,29 @@ fn fleet_destination(here: &str, here_coast: Option<&str>, to: &str) -> Result<O
 
 /// Validation-time convoy check (R-CVY-03): both ends coastal and a chain of water provinces,
 /// each holding a fleet, links them. Whether those fleets actually convoy is decided later.
-fn convoy_possible(state: &GameState, from: &str, to: &str) -> bool {
+pub(crate) fn convoy_possible(state: &GameState, from: &str, to: &str) -> bool {
     let coastal = |p: &str| province_type(p) == Some(ProvinceType::Coast);
-    if !coastal(from) || !coastal(to) {
-        return false;
-    }
+    coastal(from) && coastal(to) && fleet_seas_from(state, from).iter().any(|s| sea_borders(s, to))
+}
+
+/// Whether the fleet in `sea` can be part of a convoy chain from `from` to `to`.
+pub(crate) fn convoy_possible_via(state: &GameState, from: &str, to: &str, sea: &str) -> bool {
+    convoy_possible(state, from, to)
+        && fleet_seas_from(state, from).contains(sea)
+        && fleet_seas_from(state, to).contains(sea)
+}
+
+/// Water provinces holding a fleet that a chain of such provinces connects to the coast `from`.
+fn fleet_seas_from<'a>(state: &'a GameState, from: &str) -> HashSet<&'a str> {
     let seas: Vec<&str> = state
         .units
         .iter()
         .filter(|u| u.unit_type == UnitType::F && province_type(&u.location) == Some(ProvinceType::Sea))
         .map(|u| u.location.as_str())
         .collect();
-    let mut seen: HashSet<&str> = HashSet::new();
-    let mut queue: VecDeque<&str> = seas.iter().copied().filter(|s| sea_borders(s, from)).collect();
-    seen.extend(queue.iter().copied());
+    let mut seen: HashSet<&str> = seas.iter().copied().filter(|s| sea_borders(s, from)).collect();
+    let mut queue: VecDeque<&str> = seen.iter().copied().collect();
     while let Some(sea) = queue.pop_front() {
-        if sea_borders(sea, to) {
-            return true;
-        }
         for &next in &seas {
             if !seen.contains(next) && sea_borders(sea, next) {
                 seen.insert(next);
@@ -327,5 +332,5 @@ fn convoy_possible(state: &GameState, from: &str, to: &str) -> bool {
             }
         }
     }
-    false
+    seen
 }

@@ -235,7 +235,7 @@ pub(crate) fn adjudicate(state: &GameState, orders: &[Order]) -> Resolution {
 
 /// A build is legal in an unoccupied home SC the power still controls (R-ADJ-03/05/06), with a
 /// unit type the province allows and, for a fleet on a split coast, the coast (R-ADJ-04).
-fn check_build(
+pub(crate) fn check_build(
     state: &GameState,
     builds: &[Unit],
     power: Power,
