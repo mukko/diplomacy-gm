@@ -30,8 +30,17 @@ README and the map credits into `dist/`. Users need neither Node.js nor Rust: on
 and double-click `diplomacy-gm.exe`, which starts the server, opens the browser and saves games in
 `data\games` next to the program (see [packaging/README-windows.txt](packaging/README-windows.txt)).
 
-- Windows build: `scripts/package.sh x86_64-pc-windows-msvc` on Windows, or
-  `scripts/package.sh x86_64-pc-windows-gnu` on macOS/Linux with mingw-w64 installed.
+- Windows build on macOS (cross-compile; one-time setup, then the build):
+
+  ```bash
+  brew install mingw-w64                      # Windows linker (about 1.4 GB)
+  rustup target add x86_64-pc-windows-gnu
+  scripts/package.sh x86_64-pc-windows-gnu    # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
+  ```
+
+  On Linux install mingw-w64 with the package manager instead. On Windows itself use
+  `scripts/package.sh x86_64-pc-windows-msvc` (Git Bash, with Node.js and Rust installed).
+- Package for the machine you are on: `scripts/package.sh` (e.g. `dist/diplomacy-gm-aarch64-apple-darwin.zip`).
 - GitHub Actions: [.github/workflows/package.yml](.github/workflows/package.yml) runs the tests and
   builds the Windows and macOS packages (manually, or when a `v*` tag is pushed).
 

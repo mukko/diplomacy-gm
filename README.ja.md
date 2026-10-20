@@ -29,8 +29,17 @@ Ctrl+C で停止します。オプション: `--port 9000`（ポート変更）�
 ダブルクリックすると、サーバーが起動してブラウザが開き、ゲームはプログラムと同じフォルダの `data\games` に保存されます
 （[packaging/README-windows.txt](packaging/README-windows.txt) 参照）。
 
-- Windows 向けのビルド: Windows 上で `scripts/package.sh x86_64-pc-windows-msvc`、または mingw-w64 を入れた
-  macOS / Linux で `scripts/package.sh x86_64-pc-windows-gnu`。
+- macOS で Windows 版をビルドする手順（クロスコンパイル。最初の2行は初回のみ）:
+
+  ```bash
+  brew install mingw-w64                      # Windows 用のリンカー（約 1.4GB）
+  rustup target add x86_64-pc-windows-gnu
+  scripts/package.sh x86_64-pc-windows-gnu    # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
+  ```
+
+  Linux ではパッケージマネージャーで mingw-w64 を入れます。Windows 上では Node.js と Rust を入れたうえで、
+  Git Bash から `scripts/package.sh x86_64-pc-windows-msvc` を実行します。
+- 今使っているマシン向けのパッケージ: `scripts/package.sh`（例: `dist/diplomacy-gm-aarch64-apple-darwin.zip`）。
 - GitHub Actions: [.github/workflows/package.yml](.github/workflows/package.yml) がテストを実行し、Windows 版と
   macOS 版のパッケージを作ります（手動実行、または `v*` タグの push 時）。
 
