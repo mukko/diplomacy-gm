@@ -64,6 +64,14 @@ export interface OrderCheck {
   rules: string[];
 }
 
+/** One item of order text read by `POST …/parse-orders`. */
+export interface ParsedItem {
+  text: string;
+  order?: Order;
+  error?: string;
+  check?: OrderCheck;
+}
+
 export interface UnitOptions {
   unit: Unit;
   civilDisorder: boolean;

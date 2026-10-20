@@ -8,6 +8,7 @@ import type {
   MapLayout,
   Order,
   OrderCheck,
+  ParsedItem,
   PowerId,
   PowerOptions,
   ReplayFrame,
@@ -66,6 +67,8 @@ export const api = {
     request<{ phase: string; orders: Partial<Record<PowerId, OrderCheck[]>> }>("GET", `/games/${id}/phases/${phase}/orders`),
   submitOrders: (id: string, phase: string, power: PowerId, orders: Order[]) =>
     request<{ results: OrderCheck[] }>("PUT", `/games/${id}/phases/${phase}/orders/${power}`, orders),
+  parseOrders: (id: string, phase: string, text: string) =>
+    request<{ items: ParsedItem[] }>("POST", `/games/${id}/phases/${phase}/parse-orders`, { text }),
   resolve: (id: string, phase: string) => request<Resolution>("POST", `/games/${id}/phases/${phase}/resolve`),
 
   unitOptions: (id: string, prov: string) =>

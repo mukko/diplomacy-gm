@@ -5,6 +5,7 @@ mod adjustment;
 mod common;
 mod movement;
 pub mod options;
+pub mod parse;
 mod resolve;
 mod retreat;
 mod validate;

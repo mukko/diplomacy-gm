@@ -856,3 +856,33 @@ async fn submitted_orders_can_be_read_back_with_checks() {
     let (status, res) = call(&app, Method::GET, &format!("/games/{id}/phases/F1901M/orders"), None).await;
     assert_eq!(status, StatusCode::CONFLICT, "{res}");
 }
+
+#[tokio::test]
+async fn order_text_is_parsed_and_checked_without_storing() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let body = json!({ "text": "France: A Par-Bur, A Mar S A Par-Bur\nA Mun-Par\nA Xyz-Bur" }).to_string();
+    let (status, res) = call(
+        &app,
+        Method::POST,
+        &format!("/games/{id}/phases/S1901M/parse-orders"),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    let items = res["items"].as_array().unwrap();
+    assert_eq!(items.len(), 4);
+    assert_eq!(
+        items[0]["order"],
+        json!({ "power": "FRA", "unit": "Par", "type": "move", "to": "Bur" })
+    );
+    assert_eq!(items[0]["check"]["status"], "valid");
+    assert_eq!(items[2]["order"]["power"], "GER");
+    assert_eq!(items[2]["check"]["status"], "hold", "Mun-Par is not adjacent");
+    assert!(items[3]["error"].is_string());
+    assert!(items[3].get("check").is_none());
+
+    let (_, orders) = call(&app, Method::GET, &format!("/games/{id}/phases/S1901M/orders"), None).await;
+    assert_eq!(orders["orders"], json!({}), "parsing stores nothing");
+}

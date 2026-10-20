@@ -32,14 +32,23 @@ the reason is recorded in the trace.
 
 ### 2.1 Parsing (text input)
 
-The GUI submits structured orders, but a text parser is provided for convenience and tests.
+The GUI submits structured orders; order text typed by the GM is read by `POST …/parse-orders`
+(`server/src/engine/parse.rs`), which returns each item's structured order (or an error) without storing
+anything. Legality is then checked exactly as for submitted orders (§ 2.2).
 
 - Case-insensitive. Unit type (`A`/`F`) optional (R-ORD-06); if given and wrong, the order is invalid.
 - Move separators: `-`, `–`, `->`, `to`. Keywords: `H`/`Hold(s)`, `S`/`Support(s)`, `C`/`Convoy(s)`,
-  `R`/`Retreat`, `D`/`Disband`, `B`/`Build`, `via convoy`.
+  `R`/`Retreat`, `D`/`Disband`, `B`/`Build`, `W`/`Waive`, `via convoy`. A unit with no keyword holds
+  (movement phase). In a retreat phase a move is a retreat.
+- One order per line, or several separated by `,` or `;`; lines starting with `#` are ignored.
+- Power: a power name or code followed by `:` (`France:`, `FRA:`, `フランス:`) at the start of a line applies
+  to that line; alone on a line it applies to the following lines. Otherwise the power is the owner of the
+  ordered unit (for builds and waives: of the home supply center). Naming a unit of another power is an
+  error. Nationality words before a foreign unit (`S Turkish A Bul-Rum`) are ignored.
 - Coasts: `NC SC EC`, also `/nc`, `(nc)`, `North Coast`, etc.
 - Province aliases (accepted on input, normalised to rulebook abbreviations): e.g. `Lyo`→`GoL`,
-  `Mao`/`Mat`→`Mid`, `Nao`→`NAt`, `Nwg`→`Nrg`, `Stp`→`StP`, `Naf`→`NAf`, `Port`→`Por`, full names.
+  `Mao`/`Mat`→`Mid`, `Nao`→`NAt`, `Nwg`→`Nrg`, `Stp`→`StP`, `Naf`→`NAf`, `Port`→`Por`, `Galacia`→`Gal`,
+  full names (`St. Petersburg`, `Mid-Atlantic Ocean`).
 - Anything ambiguous → invalid ("when in doubt, write it out").
 
 ### 2.2 Validation rules (movement phase)

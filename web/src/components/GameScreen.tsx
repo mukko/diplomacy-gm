@@ -4,7 +4,7 @@ import { api } from "../api";
 import type { Assets } from "../assets";
 import { useI18n } from "../i18n";
 import { orderArrow, orderText, province, sameOrder, unitLocation, type Arrow } from "../orders";
-import type { DisbandProposal, GameState, GameView, Order, OrderCheck, PowerId, PowerOptions, ReplayFrame, Resolution, UnitOptions } from "../types";
+import type { DisbandProposal, GameState, GameView, Order, OrderCheck, ParsedItem, PowerId, PowerOptions, ReplayFrame, Resolution, UnitOptions } from "../types";
 import { POWERS } from "../types";
 import { Board } from "./Board";
 import { ResolutionPanel, Rules, stepArrows } from "./ResolutionPanel";
@@ -97,12 +97,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
     }
   };
 
-  const setOrder = (o: Order) => {
-    setDrafts((d) => {
-      const list = (d[o.power] ?? []).filter((x) => !(x.unit === o.unit && x.type !== "build" && o.type !== "build") && !(o.type === "build" && x.unit === o.unit));
-      return { ...d, [o.power]: [...list, o] };
-    });
-  };
+  const setOrder = (o: Order) => setDrafts((d) => withOrders(d, [o]));
 
   const removeOrder = (p: PowerId, o: Order) => setDrafts((d) => ({ ...d, [p]: (d[p] ?? []).filter((x) => !sameOrder(x, o)) }));
 
@@ -130,11 +125,11 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
     void selectUnit(loc);
   };
 
-  const submit = async (p: PowerId) => {
+  const submit = async (p: PowerId, list: Order[] = drafts[p] ?? []) => {
     if (!state) return;
     setBusy(true);
     try {
-      const r = await api.submitOrders(id, state.phase, p, drafts[p] ?? []);
+      const r = await api.submitOrders(id, state.phase, p, list);
       setChecks((c) => ({ ...c, [p]: r.results }));
       setError(undefined);
     } catch (e) {
@@ -142,6 +137,16 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
     } finally {
       setBusy(false);
     }
+  };
+
+  // Orders read from text: add them to the drafts, and optionally submit every power they touch.
+  const applyText = async (orders: Order[], andSubmit: boolean) => {
+    const next = withOrders(drafts, orders);
+    setDrafts(next);
+    if (andSubmit) {
+      for (const p of new Set(orders.map((o) => o.power))) await submit(p, next[p] ?? []);
+    }
+    if (orders[0]) setActive(orders[0].power);
   };
 
   const resolve = async () => {
@@ -266,6 +271,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
             ))}
           </div>
           {tab === "progress" && <Progress state={state} submitted={game.submitted} disorder={disorder} onToggle={toggleDisorder} />}
+          {tab === "orders" && <TextEntry gameId={id} state={state} busy={busy} onApply={applyText} />}
           {tab === "orders" && (
             <OrdersPanel
               state={state}
@@ -310,6 +316,87 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
         </aside>
       </div>
     </div>
+  );
+}
+
+/** Replace a unit's order (or a build in the same province) with the new ones. */
+function withOrders(drafts: Drafts, orders: Order[]): Drafts {
+  const next: Drafts = { ...drafts };
+  const isAdjust = (o: Order) => o.type === "build" || o.type === "waive";
+  for (const o of orders) {
+    const list = (next[o.power] ?? []).filter((x) => !(x.unit === o.unit && isAdjust(x) === isAdjust(o)));
+    next[o.power] = [...list, o];
+  }
+  return next;
+}
+
+function TextEntry({ gameId, state, busy, onApply }: { gameId: string; state: GameState; busy: boolean; onApply: (orders: Order[], submit: boolean) => void }) {
+  const { t } = useI18n();
+  const [text, setText] = useState("");
+  const [items, setItems] = useState<ParsedItem[]>();
+  const [error, setError] = useState<string>();
+
+  const read = async () => {
+    try {
+      const r = await api.parseOrders(gameId, state.phase, text);
+      setItems(r.items);
+      setError(undefined);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    }
+  };
+  const good = (items ?? []).flatMap((i) => (i.order ? [i.order] : []));
+  const apply = (submit: boolean) => {
+    onApply(good, submit);
+    setText("");
+    setItems(undefined);
+  };
+
+  return (
+    <details className="text-entry">
+      <summary>{t("textEntry")}</summary>
+      <textarea
+        value={text}
+        rows={5}
+        placeholder={t("textEntryPlaceholder")}
+        onChange={(e) => {
+          setText(e.target.value);
+          setItems(undefined);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void read();
+        }}
+      />
+      <div className="row">
+        <button onClick={read} disabled={!text.trim()}>
+          {t("readOrders")}
+        </button>
+        <button onClick={() => apply(false)} disabled={busy || good.length === 0}>
+          {t("addToDrafts")} ({good.length})
+        </button>
+        <button className="primary" onClick={() => apply(true)} disabled={busy || good.length === 0}>
+          {t("addAndSubmit")}
+        </button>
+      </div>
+      <p className="muted hint">{t("textEntryHint")}</p>
+      {error && <p className="error">{error}</p>}
+      {items && (
+        <ul className="parsed">
+          {items.map((i, k) => (
+            <li key={k} className={i.error ? "bad" : ""}>
+              <code>{i.text}</code> →{" "}
+              {i.order ? (
+                <>
+                  <span className={`swatch ${i.order.power}`} /> <code>{orderText(state, i.order)}</code> {i.check && <Status check={i.check} />}
+                </>
+              ) : (
+                <span className="error-text">{i.error}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
   );
 }
 

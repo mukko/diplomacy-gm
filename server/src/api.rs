@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::adjudicator::{AdjudicationError, Adjudicator};
-use crate::engine::options;
+use crate::engine::{options, parse};
 use crate::game::{Game, GameError, new_game_id};
 use crate::map;
 use crate::model::{GameState, Order, Phase, PhaseKind, Power};
@@ -44,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/games/{id}/replay/{index}", get(get_replay_frame))
         .route("/games/{id}/phases/{phase}/orders", get(get_orders))
         .route("/games/{id}/phases/{phase}/orders/{power}", put(submit_orders))
+        .route("/games/{id}/phases/{phase}/parse-orders", post(parse_orders))
         .route("/games/{id}/phases/{phase}/resolve", post(resolve_phase))
         .route("/games/{id}/phases/{phase}/default-disbands", get(get_default_disbands))
         .route("/games/{id}/units/{prov}/options", get(get_unit_options))
@@ -155,7 +156,10 @@ async fn get_map_svg() -> impl IntoResponse {
 }
 
 async fn get_map_layout() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/json")], map::STANDARD_MAP_LAYOUT_JSON)
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        map::STANDARD_MAP_LAYOUT_JSON,
+    )
 }
 
 async fn get_map_graph() -> impl IntoResponse {
@@ -272,6 +276,47 @@ async fn get_orders(
         })
         .collect();
     Ok(Json(json!({ "phase": phase, "orders": orders })))
+}
+
+#[derive(Deserialize)]
+struct ParseRequest {
+    text: String,
+    #[serde(default)]
+    power: Option<Power>,
+}
+
+/// Read order text (adjudication.md § 2.1) for the current phase. Nothing is stored: each item
+/// comes back with the order it was read as and the same check as `PUT …/orders`, or an error.
+async fn parse_orders(
+    State(app): State<AppState>,
+    Path((id, phase)): Path<(String, String)>,
+    Json(req): Json<ParseRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let phase: Phase = parse_path(&phase)?;
+    let game = app.store.load(&id)?;
+    if phase != game.state.phase {
+        return Err(GameError::PhaseMismatch {
+            expected: game.state.phase,
+            got: phase,
+        }
+        .into());
+    }
+    let items: Vec<serde_json::Value> = parse::parse_orders(&game.state, &req.text, req.power)
+        .into_iter()
+        .map(|item| {
+            let check = item.order.as_ref().and_then(|o| {
+                options::check_orders(&game.state, std::slice::from_ref(o))
+                    .into_iter()
+                    .next()
+            });
+            let mut v = json!(item);
+            if let Some(check) = check {
+                v["check"] = json!(check);
+            }
+            v
+        })
+        .collect();
+    Ok(Json(json!({ "phase": phase, "items": items })))
 }
 
 async fn submit_orders(

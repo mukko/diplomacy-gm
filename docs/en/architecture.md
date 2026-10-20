@@ -153,6 +153,7 @@ Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retre
 | `GET  /games/:id/phases/:phase/orders` ✔ | Orders submitted so far for the current phase, per power, each with the same `{ order, status, reason?, rules }` check as `PUT …/orders` (local single-GM tool: not secret). `409 phase-mismatch` for another phase |
 | `GET  /games/:id/units/:prov/options` ✔ | Legal orders for one unit in the current phase, as ready-to-submit `Order` objects checked with the adjudicator's own validation. Movement: hold, moves (split-coast destinations with their coast; `viaConvoy` variants where a convoy is possible), hold and move supports (only for moves the supported unit can legally be ordered to make), convoys (only for routes that can pass through this fleet). Retreat: the dislodged unit's retreat options and disband. Adjustment: disband, if its power must remove units. A power in civil disorder gets `civilDisorder: true` and no orders in movement and retreat phases (its orders are ignored, PR-16); in an adjustment phase its disbands are still offered, for the GM to enter (PR-08). `404` if there is no such unit |
 | `GET  /games/:id/powers/:power/options` ✔ | The same for every unit of a power (dislodged units in a retreat phase). In an adjustment phase also `adjustment` (SCs − units) and `builds`: each legal build (home SC × unit type × coast) plus a waive order; empty in civil disorder |
+| `POST /games/:id/phases/:phase/parse-orders` ✔ | Read order text `{ text }` ([adjudication.md § 2.1](adjudication.md#21-parsing-text-input)); returns `items`: `{ text, order?, error?, check? }` per item. Stores nothing |
 | `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders. Works for any power, including manual disbands for a power in civil disorder (PR-08). All orders are stored; the response has `accepted` (count) and `results`: per order, in submission order, `{ order, status, reason?, rules }` with `status` `valid` (executed as written; it may still fail during resolution), `hold` (movement: not executable, the unit holds — R-ORD-04), `disband` (retreat: not executable, the unit is disbanded) or `ignored` (no effect: not the power's unit, civil disorder, duplicate, beyond entitlement, wrong phase — PR-05/14/15/16, R-ADJ-01). Same checks as the adjudicator's validation (adjudication.md § 2) |
 | `GET  /games/:id/phases/:phase/default-disbands` ✔ | For the current adjustment phase: each power that must remove units, with `required`, `ordered` (submitted disband orders that will be used, e.g. entered by the GM) and `proposed` (units the engine will remove for the rest, with their PR-08 distance) — R-CD-03 / PR-08 / PR-09. `409 phase-mismatch` if `:phase` is not the current phase, `409 not-adjustment-phase` for movement and retreat phases |
 | `POST /games/:id/phases/:phase/resolve` ✔ | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
@@ -213,7 +214,10 @@ runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
   with prev / next) to see that phase's starting position and step through its resolution.
 - Japanese / English switch (remembered in the browser).
 
-Not yet: timers and text entry of orders.
+- Text entry: in the Orders tab, "Enter orders as text" reads typed orders for any powers (preview with
+  each order's check or error), then adds them to the drafts or adds and submits them.
+
+Not yet: timers.
 
 ## 8. Development principles
 

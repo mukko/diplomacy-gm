@@ -33,14 +33,22 @@ adjudicate(state: GameState, orders: Order[]) -> Resolution
 
 ### 2.1 解析（テキスト入力）
 
-GUI は構造化された命令を送信しますが、利便性とテストのためにテキストパーサーも提供します。
+GUI は構造化された命令を送信します。GM が入力した命令のテキストは `POST …/parse-orders`
+（`server/src/engine/parse.rs`）で読み取り、項目ごとに構造化した命令（またはエラー）を返します。この API は何も保存しません。
+合法かどうかは、提出された命令とまったく同じ検証（§2.2）で判定します。
 
 - 大文字小文字を区別しない。ユニット種別（`A`/`F`）は省略可（R-ORD-06）。指定されていて誤っている場合は無効。
 - 移動の区切り: `-`、`–`、`->`、`to`。キーワード: `H`/`Hold(s)`、`S`/`Support(s)`、`C`/`Convoy(s)`、
-  `R`/`Retreat`、`D`/`Disband`、`B`/`Build`、`via convoy`。
+  `R`/`Retreat`、`D`/`Disband`、`B`/`Build`、`W`/`Waive`、`via convoy`。キーワードのないユニットは維持
+  （移動フェイズ）。撤退フェイズでは移動は撤退として扱う。
+- 1行に1命令、または `,`・`;` で区切って複数。`#` で始まる行は無視する。
+- 列強: 行頭の列強名またはコードと `:`（`France:`、`FRA:`、`フランス:`）はその行に適用し、列強名だけの行は以降の行に適用する。
+  指定がなければ命令されたユニットの所有国（建設・建設放棄では本国補給都市の国）とする。他国のユニットを指定するとエラー。
+  他国ユニットの前の国籍語（`S Turkish A Bul-Rum`）は無視する。
 - 海岸: `NC SC EC`、および `/nc`、`(nc)`、`North Coast` など。
 - 地域の別名（入力時に受け付け、ルールブックの略称に正規化）: 例 `Lyo`→`GoL`、`Mao`/`Mat`→`Mid`、
-  `Nao`→`NAt`、`Nwg`→`Nrg`、`Stp`→`StP`、`Naf`→`NAf`、`Port`→`Por`、正式名称。
+  `Nao`→`NAt`、`Nwg`→`Nrg`、`Stp`→`StP`、`Naf`→`NAf`、`Port`→`Por`、`Galacia`→`Gal`、
+  正式名称（`St. Petersburg`、`Mid-Atlantic Ocean`）。
 - 曖昧なものはすべて無効（「迷ったら略さず書け」）。
 
 ### 2.2 検証ルール（移動フェイズ）
