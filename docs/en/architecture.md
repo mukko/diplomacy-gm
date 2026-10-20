@@ -149,6 +149,8 @@ Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retre
 | `GET  /games/:id/history` ✔ | All phases with orders and resolutions |
 | `GET  /games/:id/replay` ✔ | Replay frames (§ 5) |
 | `GET  /games/:id/replay/:index` ✔ | One replay frame |
+| `GET  /maps/standard/svg` ✔, `…/layout` ✔, `…/graph` ✔ | Map drawing assets for the GUI ([map.md § 7](map.md#7-drawing-the-map-gui-assets)) |
+| `GET  /games/:id/phases/:phase/orders` ✔ | Orders submitted so far for the current phase, per power, each with the same `{ order, status, reason?, rules }` check as `PUT …/orders` (local single-GM tool: not secret). `409 phase-mismatch` for another phase |
 | `GET  /games/:id/units/:prov/options` ✔ | Legal orders for one unit in the current phase, as ready-to-submit `Order` objects checked with the adjudicator's own validation. Movement: hold, moves (split-coast destinations with their coast; `viaConvoy` variants where a convoy is possible), hold and move supports (only for moves the supported unit can legally be ordered to make), convoys (only for routes that can pass through this fleet). Retreat: the dislodged unit's retreat options and disband. Adjustment: disband, if its power must remove units. A power in civil disorder gets `civilDisorder: true` and no orders in movement and retreat phases (its orders are ignored, PR-16); in an adjustment phase its disbands are still offered, for the GM to enter (PR-08). `404` if there is no such unit |
 | `GET  /games/:id/powers/:power/options` ✔ | The same for every unit of a power (dislodged units in a retreat phase). In an adjustment phase also `adjustment` (SCs − units) and `builds`: each legal build (home SC × unit type × coast) plus a waive order; empty in civil disorder |
 | `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders. Works for any power, including manual disbands for a power in civil disorder (PR-08). All orders are stored; the response has `accepted` (count) and `results`: per order, in submission order, `{ order, status, reason?, rules }` with `status` `valid` (executed as written; it may still fail during resolution), `hold` (movement: not executable, the unit holds — R-ORD-04), `disband` (retreat: not executable, the unit is disbanded) or `ignored` (no effect: not the power's unit, civil disorder, duplicate, beyond entitlement, wrong phase — PR-05/14/15/16, R-ADJ-01). Same checks as the adjudicator's validation (adjudication.md § 2) |
@@ -185,6 +187,28 @@ hides one power's orders from the others on screen is a display question for the
 | GM controls | Resolve phase, declare / lift civil disorder per power (PR-16), review automatically proposed disbands and override them manually (PR-08) |
 | Resolution replay | Step through `trace` (prev / next / play): highlight orders, show strengths, cut supports, bounces, dislodgements with rule IDs |
 | History / replay | Browse past phases and their maps/orders frame by frame (§ 5); export the save file |
+
+### Implemented so far
+
+The server serves the built GUI (`web/dist`, override with `--web-dir`) at `/` on the same local
+address as the API, so one `cargo run` starts everything. During development `npm run dev` in `web/`
+runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
+
+- Start screen: new game, saved-game list, load a save file (optionally under a new ID).
+- Board: map view and graph view; SC ownership tint, units, dislodged units; arrows for the orders
+  entered (green: valid when submitted, red: invalid, grey: not submitted / other powers).
+- Order entry: click a unit (or pick it in the list) → legal orders from the server; click a highlighted
+  province to move/retreat; submit per power and see each order's check (valid / holds / ignored with
+  reason and rule IDs). Adjustment phase: builds per home SC, required disbands and the automatic
+  disbands (PR-08).
+- Progress: units, SCs, submission status and civil disorder declare/lift per power.
+- Resolve with an inline confirmation, then step through the trace (first / prev / next / last, step
+  list, details with rule IDs, orders of the step drawn on the board, board after the last step).
+  Reopening a game shows its most recent resolution.
+- Japanese / English switch (remembered in the browser).
+
+Not yet: browsing older phases of the history, timers, text entry of orders, and a browser check of the
+retreat and adjustment phases (covered by API and engine tests only).
 
 ## 8. Development principles
 

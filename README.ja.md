@@ -7,15 +7,19 @@
 解決ステップの再生ができる **GUI** で構成されます。
 
 > 状態: **開発初期。** マップデータ、Rust の API サーバー（ゲームのライフサイクル、JSON セーブファイル、
-> 再生）、裁定器（移動・撤退・調整フェイズ、段階的なトレース付き）があります。GUI はまだありません。
+> 再生）、裁定器（移動・撤退・調整フェイズ、ステップごとの解決手順）、Web GUI の最初の版（日本語／英語）があります。
 
 ## 開発
 
 ```bash
-cd server && cargo run -- --data-dir data/games   # API: http://127.0.0.1:8080
+cd web && npm install && npm run build            # GUI をビルド（web/dist、初回と GUI 変更時）
+cd server && cargo run -- --data-dir data/games   # API と GUI: http://127.0.0.1:8080
 cd server && cargo test                           # サーバーのテスト
 npm install && npm test                           # マップデータのテスト（shared/map）
+cd web && npm run dev                             # GUI の開発サーバー: http://127.0.0.1:5173（API の起動が必要）
 ```
+
+ブラウザで <http://127.0.0.1:8080/> を開きます。サーバーは自分のマシンからの接続だけを受け付けます。
 
 ゲームは 1 つにつき 1 つの JSON ファイルとしてデータディレクトリに保存されます。
 [architecture.md § 5](docs/ja/architecture.md#5-永続化セーブファイル) を参照。

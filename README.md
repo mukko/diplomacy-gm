@@ -7,16 +7,20 @@ according to the official rules and returns results with step-by-step reasoning,
 that shows the map and game progress, accepts order input, and replays each resolution step.
 
 > Status: **early development.** Map data, the Rust API server (game lifecycle, JSON save
-> files, replay) and the adjudicator (movement, retreat and adjustment phases, with a
-> step-by-step trace) exist; the GUI does not yet.
+> files, replay), the adjudicator (movement, retreat and adjustment phases, with a
+> step-by-step trace) and a first version of the web GUI (Japanese/English) exist.
 
 ## Development
 
 ```bash
-cd server && cargo run -- --data-dir data/games   # API on http://127.0.0.1:8080
+cd web && npm install && npm run build            # build the GUI once (web/dist)
+cd server && cargo run -- --data-dir data/games   # API + GUI on http://127.0.0.1:8080
 cd server && cargo test                           # server tests
 npm install && npm test                           # map data tests (shared/map)
+cd web && npm run dev                             # GUI dev server on http://127.0.0.1:5173 (API must run)
 ```
+
+Open <http://127.0.0.1:8080/> in a browser. The server only accepts local connections.
 
 Each game is saved as one JSON file in the data directory; see
 [architecture.md § 5](docs/en/architecture.md#5-persistence-save-files).
