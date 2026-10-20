@@ -180,7 +180,7 @@ async fn get_game(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
     Ok(Json(GameView::from(app.store.load(&id)?)))
 }
 
-/// Download the complete save file (includes unresolved orders, so GM only once auth exists).
+/// Download the complete save file, including unresolved orders (local single-GM tool, no access control).
 async fn export_game(State(app): State<AppState>, Path(id): Path<String>) -> ApiResult<impl IntoResponse> {
     let game = app.store.load(&id)?;
     let body = serde_json::to_string_pretty(&game).map_err(StoreError::from)?;

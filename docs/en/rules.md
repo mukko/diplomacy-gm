@@ -209,6 +209,9 @@ Notation summary:
 
 ## 14. Variants for fewer players
 
+> **Not supported by this tool**: it handles the standard 7-player game only (see
+> [architecture.md § 1](architecture.md#1-goal)). These rules are kept for reference.
+
 | ID | Players | Setup |
 |----|---------|-------|
 | R-VAR-01 | 6 | Italy is removed from play: Italian units hold, are not mutually supporting, may be supported to hold by anyone, and are disbanded if dislodged. |

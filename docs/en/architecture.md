@@ -7,11 +7,14 @@
 A game-master tool for *Diplomacy* that
 
 - stores game state and history,
-- lets players (or a GM) enter orders on an interactive map,
+- lets the GM enter every power's orders on an interactive map,
 - adjudicates orders according to the official rules ([rules.md](rules.md), [adjudication.md](adjudication.md)),
 - returns **both the result and the reasoning steps**, so the GUI can replay resolution step by step.
 
 Negotiation itself happens outside the tool (in person or elsewhere). The tool does not enforce agreements (R-GEN-05).
+
+Scope *(decided)*: the standard 7-player game only. The variants for fewer players (rules.md § 14,
+`R-VAR-*`) are not supported; `variant` is always `standard` and the server rejects any other value.
 
 ## 2. Components
 
@@ -34,6 +37,7 @@ Negotiation itself happens outside the tool (in person or elsewhere). The tool d
 | `web/` | Map rendering, order entry, progress, trace replay | React + Vite, SVG map |
 | `shared/` | Map data (`standard.json`: provinces, coasts, adjacency, later SVG coordinates), read by both server and GUI; TypeScript map types/tests for the GUI | JSON (+ TypeScript, Vitest) |
 | Persistence | One JSON save file per game (§ 5) | Files *(decided)* |
+| Deployment | Runs locally on the GM's machine for a single user; listens on `127.0.0.1` only; no authentication or roles (§ 6) | *(decided)* |
 
 The adjudicator is the authority: the GUI may pre-validate for usability, but the server re-validates everything.
 
@@ -139,22 +143,28 @@ Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retre
 | `GET  /games` ✔ | Saved games (ID, title, phase, last update), newest first, plus save files that could not be read |
 | `POST /games` ✔ | Create a game and its save file (title; later: variant, power assignment, settings) |
 | `GET  /games/:id` ✔ | Restore from the save file: current state, phase, which powers have submitted (orders stay secret) |
-| `GET  /games/:id/save` ✔ | Download the complete save file (GM only once roles exist: it contains unresolved orders) |
+| `GET  /games/:id/save` ✔ | Download the complete save file (includes the unresolved orders) |
 | `POST /games/import` ✔ | Restore a game from an uploaded save file (validated); `?asNew=true` stores it under a new ID |
 | `GET  /games/:id/history` ✔ | All phases with orders and resolutions |
 | `GET  /games/:id/replay` ✔ | Replay frames (§ 5) |
 | `GET  /games/:id/replay/:index` ✔ | One replay frame |
 | `GET  /games/:id/units/:prov/options` | Legal orders for a unit (helps order entry UI) |
-| `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders; returns per-order validation. The GM may also call this for any power (e.g. manual disbands for a power in civil disorder, PR-08) |
-| `GET  /games/:id/phases/:phase/default-disbands` | GM only: automatically proposed disbands per power (R-CD-03 / PR-08), for review before resolving |
+| `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders; returns per-order validation. Works for any power, including manual disbands for a power in civil disorder (PR-08) |
+| `GET  /games/:id/phases/:phase/default-disbands` | Automatically proposed disbands per power (R-CD-03 / PR-08), for review before resolving |
 | `POST /games/:id/phases/:phase/resolve` ✔ | Adjudicate; returns `Resolution` (incl. `trace`) and advances the game |
 | `GET  /games/:id/phases/:phase/resolution` | Fetch a past resolution for replay |
-| `PUT  /games/:id/civil-disorder/:power` | GM only: declare civil disorder for a power from the current phase (PR-16) |
-| `DELETE /games/:id/civil-disorder/:power` | GM only: lift civil disorder (e.g. replacement player) |
+| `PUT  /games/:id/civil-disorder/:power` | Declare civil disorder for a power from the current phase (PR-16) |
+| `DELETE /games/:id/civil-disorder/:power` | Lift civil disorder (e.g. replacement player) |
 | `POST /adjudicate` | Stateless: `{state, orders}` → `Resolution` (sandbox, tests, "what-if") |
 
-Secret simultaneous orders: until a phase is resolved, a power's orders are only visible to that power and the GM.
-(Authentication/roles: TBD.)
+Deployment and access *(decided)*: a single-user tool for the GM, run locally on the GM's machine.
+The server listens on `127.0.0.1` only (the default `--addr 127.0.0.1:8080`; a non-loopback `--addr`
+is refused at startup) and is not exposed to the network. There is no authentication, no roles and no permission checks: every route is open to
+the local GM.
+
+Secret simultaneous orders (R-ORD-01) are handled by how the tool is used, not by access control:
+the GM enters the orders, and `GET /games/:id` does not return unresolved orders. Whether the GUI
+hides one power's orders from the others on screen is a display question for the GUI (§ 7).
 
 ## 7. GUI
 

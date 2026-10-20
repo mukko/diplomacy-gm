@@ -10,7 +10,7 @@ const USAGE: &str = "usage: diplomacy-gm-server [--data-dir DIR] [--addr HOST:PO
 
   --data-dir DIR    directory holding one <gameId>.json per game
                     (default: $DIPLOMACY_GM_DATA_DIR or ./data/games)
-  --addr HOST:PORT  listen address (default: 127.0.0.1:8080)";
+  --addr HOST:PORT  listen address, loopback only (default: 127.0.0.1:8080)";
 
 #[tokio::main]
 async fn main() {
@@ -38,6 +38,13 @@ async fn main() {
             }
             other => exit_usage(&format!("unknown argument `{other}`")),
         }
+    }
+
+    // Local single-GM tool: never listen on a network interface (architecture.md § 6).
+    if !addr.ip().is_loopback() {
+        exit_usage(&format!(
+            "--addr: {addr} is not a loopback address; the server only runs locally (e.g. 127.0.0.1:8080)"
+        ));
     }
 
     let store = GameStore::open(&data_dir).unwrap_or_else(|e| {
