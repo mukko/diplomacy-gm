@@ -136,7 +136,8 @@ algorithm is recursive, so the trace is a *presentation order* computed after re
 | 7 | `result` | final positions; standoff provinces |
 
 Retreat and adjustment phases emit similar but shorter traces (`validate`, `conflicts`, `result`,
-and for Fall: `sc-ownership`, `victory-check`).
+and for Fall: `sc-ownership`, `victory-check`). The adjustment phase uses `default-disbands` (units
+chosen by R-CD-03 / PR-08, with their distances) in place of `conflicts`.
 
 Every trace entry should include the rule ID(s) that justify it, e.g.
 `{ "step": "support-cuts", "order": "A Sil S A Pru-War", "outcome": "cut", "by": "A Boh-Sil", "rules": ["R-CUT-01"] }`.
@@ -152,19 +153,20 @@ confirmed by the project owner.
 | PR-01 | Supported head-to-head battle | The stronger side wins and dislodges the other; equal → both stay. | Rulebook Diagrams 13–14; DATC |
 | PR-02 | Support from the defender's own power | Not counted toward dislodging that power's unit, but **counts** for prevent strength (bouncing others). | Diagrams 24–26 |
 | PR-03 | Paradoxes not covered by rules 21–22 | Szykman rule: involved convoyed armies do not move and have no effect. | DATC recommendation |
-| PR-04 | Coast specification | Omitted but only one coast reachable → inferred. Unreachable coast given → invalid (Hold). Coast on an army order → ignored. | R-MAP-07 |
-| PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. **(open)** If the adjudicator nevertheless receives several orders for one unit, all of them are ignored and the unit holds (independent of input order). | — |
+| PR-04 | Coast specification | Omitted but only one coast reachable → inferred. Unreachable coast given → invalid (Hold). Coast on an army order → ignored. **(open)** The same applies to retreats (a fleet's coast may be omitted when only one coast is among its retreat options) and to builds (coast ignored for an army; a fleet built in a split-coast province needs its coast, R-ADJ-04). | R-MAP-07 |
+| PR-05 | Multiple orders for one unit | Not possible: the API stores one order per unit; a resubmission replaces it. **(open)** If the adjudicator nevertheless receives several orders for one unit, all of them are ignored and the unit holds (independent of input order); in a retreat phase the unit is disbanded (R-RET-07). | — |
 | PR-06 | Retreat to the origin of a **convoyed** attacker | **Forbidden**, following the rulebook literally (R-RET-03(b)), even though DATC allows it. Confirmed by the project owner. | R-RET-03 |
 | PR-07 | "via convoy" | Represented as `viaConvoy: true` on the move. If the destination is not adjacent, a convoy is used regardless. | R-CVY-11 |
-| PR-08 | Civil-disorder distance | Minimum number of province steps from the unit to **any** home SC of its power (owned or not), moving through any province (land or water) regardless of unit type. Ties: fleets before armies, then alphabetical by province (R-CD-03). The automatic choice is only a **default**: before the phase is resolved the GM may enter or replace the disband orders of any power (see § 7), and GM-entered orders take precedence. Confirmed by the project owner. | R-CD-03 |
+| PR-08 | Civil-disorder distance | Minimum number of province steps from the unit to **any** home SC of its power (owned or not), moving through any province (land or water) regardless of unit type. Ties: fleets before armies, then alphabetical by province (R-CD-03); **(open)** "alphabetical" uses the English province name from map.md (e.g. *Livonia* before *Ukraine*). The automatic choice is only a **default**: before the phase is resolved the GM may enter or replace the disband orders of any power (see § 7), and GM-entered orders take precedence. Confirmed by the project owner. | R-CD-03 |
 | PR-09 | Missing retreat / adjustment orders | Missing retreat → disband. Missing required disbands → chosen by R-CD-03. Missing builds → waived. | R-RET-07, R-CD |
 | PR-10 | Elimination | A power with no units and no SCs is eliminated. A power with SCs but no units stays in the game. | — |
 | PR-11 | Victory timing | Checked after the Fall retreat phase, after SC ownership update, before adjustments. | R-GEN-03 |
 | PR-12 | Unmatched convoy order | Provides nothing; the fleet counts as not moving (can receive hold support). | R-CVY-04 |
 | PR-13 | Hold support to a unit whose move order was invalid | Valid — that unit is treated as holding. | R-ORD-04, R-SUP-05 |
 | PR-14 | Order for a unit not owned / not present | Ignored and reported in the trace. | — |
-| PR-15 | Excess or invalid adjustment orders | Invalid ignored (R-ADJ-01); builds beyond entitlement ignored in submission order; build in an occupied or non-controlled home SC is invalid. | R-ADJ |
-| PR-16 | Civil disorder trigger | **Declared by the GM**, never automatic. The GM records the declaration (power, starting phase) in the tool and can lift it later (e.g. a replacement player joins). While declared: movement — all orders ignored, units hold, no mutual support (R-CD-01); retreat — dislodged units disbanded (R-CD-02); adjustment — no builds, required removals chosen by R-CD-03. A power that merely failed to submit orders without a declaration is handled by R-ORD-03 / PR-09. | R-CD-01, R-CD-02 |
+| PR-15 | Excess or invalid adjustment orders | Invalid ignored (R-ADJ-01); builds beyond entitlement ignored in submission order; build in an occupied or non-controlled home SC is invalid. **(open)** A waive order uses up one build in submission order, like a build. | R-ADJ |
+| PR-16 | Civil disorder trigger | **Declared by the GM**, never automatic. The GM records the declaration (power, starting phase) in the tool and can lift it later (e.g. a replacement player joins). While declared: movement — all orders ignored, units hold, no mutual support (R-CD-01); retreat — dislodged units disbanded (R-CD-02); adjustment — no builds, required removals chosen by R-CD-03. **(open)** Disband orders filed for a power in civil disorder are treated as GM-entered and used (PR-08); its build orders are ignored. A power that merely failed to submit orders without a declaration is handled by R-ORD-03 / PR-09. | R-CD-01, R-CD-02 |
+| PR-17 | Skipping the adjustment phase | **(open)** The adjustment phase is skipped when no power must disband and no power can build: a power owed builds counts only if it is not in civil disorder and has at least one unoccupied home SC it controls (R-ADJ-03/05, R-CD-02). | architecture.md § 3 |
 
 ## 6. Retreat phase
 

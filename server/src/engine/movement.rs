@@ -4,17 +4,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde_json::{Value, json};
 
+use super::common::{end_of_year, order_text, position_text, step, strings, unit_label, with, with_coast};
 use super::resolve::{CutReason, MoveEval, Opposition, Resolver};
 use super::validate::{self, Checked, Cmd, RouteChoice, Verdict};
 use super::{legal_moves, province};
-use crate::map;
 use crate::model::{
-    DislodgedUnit, GameState, Order, OrderKind, OrderResult, Outcome, Phase, PhaseKind, Power, Resolution, Season,
-    TraceStep, Unit, UnitType,
+    DislodgedUnit, GameState, Order, OrderResult, Outcome, Phase, PhaseKind, Power, Resolution, Season, TraceStep, Unit,
 };
-
-/// SCs needed to win (R-GEN-03).
-const VICTORY_SCS: usize = 18;
 
 pub(crate) fn adjudicate(state: &GameState, orders: &[Order]) -> Resolution {
     let checked = validate::check(state, orders);
@@ -84,15 +80,8 @@ struct AfterMoves {
 }
 
 impl Tracer<'_> {
-    fn push(&mut self, step: &str, rules: &[&str], details: Value) {
-        let Value::Object(details) = details else {
-            unreachable!("trace details are objects")
-        };
-        self.steps.push(TraceStep {
-            step: step.to_string(),
-            rules: strings(rules),
-            details,
-        });
+    fn push(&mut self, name: &str, rules: &[&str], details: Value) {
+        self.steps.push(step(name, rules, details));
     }
 
     fn label(&self, u: usize) -> String {
@@ -117,7 +106,9 @@ impl Tracer<'_> {
     fn validate_steps(&mut self, orders: &[Order]) {
         let mut ordered = HashSet::new();
         for (order, verdict) in orders.iter().zip(&self.checked.verdicts) {
-            let text = order_text(self.state, order);
+            let text = order_text(order, |p| {
+                self.state.units.iter().find(|u| u.location == p).map(|u| u.unit_type)
+            });
             match verdict {
                 Verdict::Accepted { unit } => {
                     ordered.insert(*unit);
@@ -574,22 +565,9 @@ impl Tracer<'_> {
                 ..phase
             }
         } else {
-            let before = self.steps.len();
-            self.update_supply_centers(&mut next);
-            fall_steps = self.steps.split_off(before);
-            if adjustments_needed(&next) {
-                Phase {
-                    season: Season::Winter,
-                    kind: PhaseKind::Adjustment,
-                    ..phase
-                }
-            } else {
-                Phase {
-                    season: Season::Spring,
-                    year: phase.year + 1,
-                    kind: PhaseKind::Movement,
-                }
-            }
+            let (steps, after_fall) = end_of_year(&mut next);
+            fall_steps = steps;
+            after_fall
         };
         let mut rules = vec![];
         if !standoffs.is_empty() {
@@ -602,127 +580,5 @@ impl Tracer<'_> {
         );
         self.steps.extend(fall_steps);
         next
-    }
-
-    /// After Fall with no retreat phase: SC ownership (R-SC-01/02) and victory check (PR-11).
-    fn update_supply_centers(&mut self, next: &mut GameState) {
-        let mut changes = Vec::new();
-        for unit in &next.units {
-            if let Some(owner) = next.supply_centers.get_mut(&unit.location)
-                && *owner != Some(unit.power)
-            {
-                changes.push(
-                    json!({ "province": unit.location, "from": owner.map(Power::code), "to": unit.power.code() }),
-                );
-                *owner = Some(unit.power);
-            }
-        }
-        self.push("sc-ownership", &["R-SC-01", "R-SC-02"], json!({ "changes": changes }));
-        let counts: BTreeMap<&str, usize> = Power::ALL
-            .iter()
-            .map(|p| {
-                (
-                    p.code(),
-                    next.supply_centers.values().filter(|o| **o == Some(*p)).count(),
-                )
-            })
-            .collect();
-        if next.winner.is_none() {
-            next.winner = Power::ALL
-                .into_iter()
-                .find(|p| next.supply_centers.values().filter(|o| **o == Some(*p)).count() >= VICTORY_SCS);
-        }
-        self.push(
-            "victory-check",
-            &["R-GEN-03", "PR-11"],
-            json!({ "supplyCenters": counts, "winner": next.winner.map(Power::code) }),
-        );
-    }
-}
-
-/// The adjustment phase is skipped when no power must disband or can build (architecture.md § 3,
-/// R-ADJ-03/05, R-CD-02).
-fn adjustments_needed(state: &GameState) -> bool {
-    let map = map::standard();
-    Power::ALL.into_iter().any(|p| {
-        let scs = state.supply_centers.values().filter(|o| **o == Some(p)).count();
-        let units = state.units.iter().filter(|u| u.power == p).count();
-        let in_disorder = state.civil_disorder.iter().any(|c| c.power == p);
-        units > scs
-            || (scs > units
-                && !in_disorder
-                && map.supply_centers().any(|sc| {
-                    sc.home == Some(p)
-                        && state.supply_centers.get(&sc.id) == Some(&Some(p))
-                        && !state.units.iter().any(|u| u.location == sc.id)
-                }))
-    })
-}
-
-fn strings(rules: &[&str]) -> Vec<String> {
-    rules.iter().map(|r| r.to_string()).collect()
-}
-
-fn with(mut v: Value, key: &str, value: &str) -> Value {
-    v[key] = json!(value);
-    v
-}
-
-fn type_letter(t: UnitType) -> &'static str {
-    match t {
-        UnitType::A => "A",
-        UnitType::F => "F",
-    }
-}
-
-fn with_coast(location: &str, coast: Option<&str>) -> String {
-    match coast {
-        Some(c) => format!("{location}/{c}"),
-        None => location.to_string(),
-    }
-}
-
-fn unit_label(unit: &Unit) -> String {
-    format!(
-        "{} {}",
-        type_letter(unit.unit_type),
-        with_coast(&unit.location, unit.coast.as_deref())
-    )
-}
-
-fn position_text(unit: &Unit) -> String {
-    format!("{} {}", unit.power.code(), unit_label(unit))
-}
-
-/// A submitted order in rulebook notation, e.g. `A Gas S A Mar-Bur` (unit types from the board).
-fn order_text(state: &GameState, order: &Order) -> String {
-    let unit_type = |loc: &str| {
-        let p = province(loc);
-        state
-            .units
-            .iter()
-            .find(|u| u.location == p)
-            .map(|u| format!("{} ", type_letter(u.unit_type)))
-            .unwrap_or_default()
-    };
-    let me = format!("{}{}", unit_type(&order.unit), order.unit);
-    match &order.kind {
-        OrderKind::Hold => format!("{me} H"),
-        OrderKind::Move { to, via_convoy } => {
-            format!("{me}-{to}{}", if *via_convoy { " via convoy" } else { "" })
-        }
-        OrderKind::Support { target, to: None } => format!("{me} S {}{target}", unit_type(target)),
-        OrderKind::Support { target, to: Some(to) } => format!("{me} S {}{target}-{to}", unit_type(target)),
-        OrderKind::Convoy { target, to } => format!("{me} C {}{target}-{to}", unit_type(target)),
-        OrderKind::Retreat { to } => format!("{me} R {to}"),
-        OrderKind::Disband => format!("{me} D"),
-        OrderKind::Build { unit_type, coast } => {
-            format!(
-                "B {} {}",
-                type_letter(*unit_type),
-                with_coast(&order.unit, coast.as_deref())
-            )
-        }
-        OrderKind::Waive => format!("{} waive", order.power.code()),
     }
 }

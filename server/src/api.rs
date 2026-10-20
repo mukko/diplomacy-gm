@@ -76,9 +76,6 @@ impl From<GameError> for ApiError {
             GameError::GameOver => (StatusCode::CONFLICT, "game-over"),
             GameError::InvalidOrder(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid-order"),
             GameError::InvalidSave(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid-save"),
-            GameError::Adjudication(AdjudicationError::NotImplemented) => {
-                (StatusCode::NOT_IMPLEMENTED, "adjudicator-not-implemented")
-            }
             GameError::Adjudication(AdjudicationError::Failed(_)) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "adjudication-failed")
             }

@@ -1,9 +1,11 @@
 //! The adjudicator (docs/en/adjudication.md): pure functions from `(GameState, orders)` to a
-//! `Resolution`. Only the movement phase is implemented so far; retreat and adjustment phases
-//! return `AdjudicationError::NotImplemented`.
+//! `Resolution`, for movement, retreat and adjustment phases.
 
+mod adjustment;
+mod common;
 mod movement;
 mod resolve;
+mod retreat;
 mod validate;
 
 use crate::adjudicator::{AdjudicationError, Adjudicator};
@@ -17,7 +19,8 @@ impl Adjudicator for Engine {
     fn adjudicate(&self, state: &GameState, orders: &[Order]) -> Result<Resolution, AdjudicationError> {
         match state.phase.kind {
             PhaseKind::Movement => Ok(movement::adjudicate(state, orders)),
-            PhaseKind::Retreat | PhaseKind::Adjustment => Err(AdjudicationError::NotImplemented),
+            PhaseKind::Retreat => Ok(retreat::adjudicate(state, orders)),
+            PhaseKind::Adjustment => Ok(adjustment::adjudicate(state, orders)),
         }
     }
 }

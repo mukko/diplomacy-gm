@@ -44,6 +44,33 @@ fn parse_order(power: Power, text: &str) -> (Unit, Option<Order>) {
         }
     };
     let strip_type = |s: &str| unit_spec(s).1 + &unit_spec(s).2.map(|c| format!("/{c}")).unwrap_or_default();
+    if let Some(rest) = text.strip_prefix("B ") {
+        let (ty, location, coast) = unit_spec(rest);
+        let u = Unit {
+            power,
+            unit_type: ty.expect("build needs a unit type"),
+            location,
+            coast,
+        };
+        let o = order(
+            &u.location,
+            OrderKind::Build {
+                unit_type: u.unit_type,
+                coast: u.coast.clone(),
+            },
+        );
+        return (u, Some(o));
+    }
+    if let Some(province) = text.strip_prefix("waive ") {
+        let u = place(province);
+        let o = order(&u.location, OrderKind::Waive);
+        return (u, Some(o));
+    }
+    if let Some(me) = text.strip_suffix(" D") {
+        let u = place(me);
+        let o = order(&u.location, OrderKind::Disband);
+        return (u, Some(o));
+    }
     if let Some((me, rest)) = text.split_once(" S ") {
         let u = place(me);
         let kind = match rest.split_once('-') {
@@ -708,8 +735,40 @@ fn sample_orders(spec: &str) -> Vec<Order> {
     parse(spec).1
 }
 
-fn add_units(state: &mut GameState, spec: &str) {
-    state.units.extend(parse(spec).0);
+/// Orders for a retreat phase: `A Bur-Gas` is a retreat, `A Bur D` a disband.
+fn retreats(spec: &str) -> Vec<Order> {
+    parse(spec)
+        .1
+        .into_iter()
+        .map(|mut o| {
+            if let OrderKind::Move { to, .. } = &o.kind {
+                o.kind = OrderKind::Retreat { to: to.clone() };
+            }
+            o
+        })
+        .collect()
+}
+
+/// Run a movement phase, then the following retreat phase with `retreat_spec`.
+fn run_with_retreats(spec: &str, retreat_spec: &str) -> (Res, Res) {
+    let moves = run(spec);
+    assert_eq!(
+        moves.0.next_state.phase.to_string(),
+        "S1901R",
+        "expected a retreat phase"
+    );
+    let r = run_on(&moves.0.next_state, &retreats(retreat_spec));
+    (moves, r)
+}
+
+/// An adjustment-phase position: the given units, with SC ownership changed by `owners`.
+fn winter(units: &str, owners: &[(&str, Option<&str>)]) -> GameState {
+    let mut state = board(parse(units).0);
+    state.phase = "W1901A".parse().unwrap();
+    for (sc, owner) in owners {
+        state.supply_centers.insert(sc.to_string(), owner.map(power));
+    }
+    state
 }
 
 #[test]
@@ -774,13 +833,20 @@ fn sample_game() {
         assert_eq!(scs(p), n, "SCs of {p:?} after Fall 1901");
     }
 
-    // Winter 1901 builds (adjustments are not implemented yet: apply them by hand).
-    let mut s1902 = next.clone();
-    s1902.phase = "S1902M".parse().unwrap();
-    add_units(
-        &mut s1902,
-        "ENG: F Edi; GER: F Kie, A Mun; RUS: A StP, A Sev; TUR: A Smy; AUS: A Vie; ITA: F Nap; FRA: F Mar",
+    // Winter 1901 adjustments.
+    let r = run_on(
+        next,
+        &sample_orders(
+            "ENG: B F Edi; GER: B F Kie, B A Mun; RUS: B A StP, B A Sev; TUR: B A Smy; AUS: B A Vie; ITA: B F Nap; FRA: B F Mar",
+        ),
     );
+    assert!(
+        r.0.orders.iter().all(|o| o.valid && o.outcome == Success),
+        "all W1901 builds are legal"
+    );
+    let s1902 = r.0.next_state.clone();
+    assert_eq!(s1902.phase, "S1902M".parse::<Phase>().unwrap());
+    assert_eq!(s1902.units.len(), 22 + 9);
     let r = run_on(
         &s1902,
         &sample_orders(
@@ -857,17 +923,42 @@ fn sample_game() {
             .retreat_options
             .contains(&"Gas".into())
     );
-}
 
-// ----- other phases ------------------------------------------------------------------------------
-
-#[test]
-fn retreat_and_adjustment_phases_are_not_implemented_yet() {
-    let mut state = GameState::standard_start();
-    for phase in ["S1901R", "W1901A"] {
-        state.phase = phase.parse().unwrap();
-        assert!(Engine.adjudicate(&state, &[]).is_err(), "{phase}");
+    // Fall 1902 retreats, then SC ownership and adjustments.
+    let r = run_on(next, &retreats("RUS: A StP-Mos; FRA: A Bur-Gas"));
+    assert_eq!((r.outcome("StP"), r.outcome("Bur")), (Success, Success));
+    let next = &r.0.next_state;
+    assert_eq!(next.phase, "W1902A".parse::<Phase>().unwrap());
+    assert_eq!(r.at("Mos"), Some((Power::Russia, UnitType::A)));
+    assert_eq!(r.at("Gas"), Some((Power::France, UnitType::A)));
+    assert!(r.0.trace.iter().any(|s| s.step == "sc-ownership"));
+    let scs = |p: Power| next.supply_centers.values().filter(|o| **o == Some(p)).count();
+    let units = |p: Power| next.units.iter().filter(|u| u.power == p).count();
+    assert_eq!((scs(Power::Russia), units(Power::Russia)), (4, 5));
+    for p in [
+        Power::Germany,
+        Power::Turkey,
+        Power::Austria,
+        Power::France,
+        Power::England,
+    ] {
+        assert_eq!(scs(p), units(p) + 1, "{p:?} gains one build");
     }
+    assert_eq!(scs(Power::Italy), units(Power::Italy));
+
+    let r = run_on(
+        next,
+        &sample_orders("RUS: A Gal D; GER: B F Kie; TUR: B F Smy; AUS: B A Tri; FRA: B A Par; ENG: B F Lon"),
+    );
+    assert!(
+        r.0.orders.iter().all(|o| o.valid && o.outcome == Success),
+        "{:#?}",
+        r.0.orders
+    );
+    assert_eq!(r.at("Gal"), None);
+    assert_eq!(r.at("Kie"), Some((Power::Germany, UnitType::F)));
+    assert_eq!(r.at("Par"), Some((Power::France, UnitType::A)));
+    assert_eq!(r.0.next_state.phase, "S1903M".parse::<Phase>().unwrap());
 }
 
 // ----- paradoxes beyond the rulebook (DATC 6.F) ----------------------------------------------------
@@ -893,4 +984,372 @@ fn pr03_second_order_paradox_with_two_resolutions() {
     assert_eq!((r.outcome("Bre"), r.outcome("Nwy")), (Fail, Fail));
     assert!(r.dislodged("Nth") && r.dislodged("Eng"));
     assert!(r.rules("Bre").contains(&"PR-03".to_string()) || r.rules("Nwy").contains(&"PR-03".to_string()));
+}
+
+// ----- § 8. Retreats -----------------------------------------------------------------------------
+
+const D12: &str =
+    "AUS: A Boh-Mun, A Tyr S A Boh-Mun; GER: A Mun-Sil, A Ber S A Mun-Sil; RUS: A War-Sil, A Pru S A War-Sil";
+
+#[test]
+fn rb_ret1() {
+    for bad in ["Boh", "Sil"] {
+        let (_, r) = run_with_retreats(D12, &format!("GER: A Mun-{bad}"));
+        assert!(!r.valid("Mun"), "Mun-{bad} is not a legal retreat (R-RET-03)");
+        assert!(
+            !r.0.next_state
+                .units
+                .iter()
+                .any(|u| u.power == Power::Germany && u.location == bad)
+        );
+        assert_eq!(r.0.next_state.units.len(), 5, "A Mun is disbanded");
+    }
+    let (_, r) = run_with_retreats(D12, "GER: A Mun-Kie");
+    assert_eq!(r.outcome("Mun"), Success);
+    assert_eq!(r.at("Kie"), Some((Power::Germany, UnitType::A)));
+    assert_eq!(r.0.next_state.phase.to_string(), "F1901M");
+}
+
+#[test]
+fn rb_ret2() {
+    // DATC 6.H.7.
+    let (_, r) = run_with_retreats(
+        "AUS: A Bud S A Tri-Vie, A Tri-Vie; GER: A Mun S A Sil-Boh, A Sil-Boh; ITA: A Vie H, A Boh H",
+        "ITA: A Boh-Tyr, A Vie-Tyr",
+    );
+    assert_eq!((r.outcome("Boh"), r.outcome("Vie")), (Fail, Fail));
+    assert!(r.rules("Boh").contains(&"R-RET-06".to_string()));
+    assert_eq!(r.at("Tyr"), None);
+    assert!(!r.0.next_state.units.iter().any(|u| u.power == Power::Italy));
+}
+
+#[test]
+fn rb_ret3() {
+    let r = run("AUS: A Ser-Rum, A Bud S A Ser-Rum, A Gal H; TUR: A Bul H; RUS: A Rum H, A Sev H, A Ukr H");
+    assert!(r.dislodged("Rum"));
+    assert!(r.retreat_options("Rum").is_empty());
+    assert!(r.0.next_state.dislodged.is_empty());
+    assert_eq!(r.0.next_state.phase.to_string(), "F1901M", "no retreat phase is needed");
+    assert_eq!(r.at("Rum"), Some((Power::Austria, UnitType::A)));
+}
+
+#[test]
+fn retreat_orders_missing_or_for_others_are_handled() {
+    // PR-09: a missing retreat order disbands; PR-14: an order for a unit that is not dislodged
+    // is ignored.
+    let (_, r) = run_with_retreats(D12, "AUS: A Mun-Bur");
+    assert!(!r.valid("Mun"), "AUS has no dislodged unit in Mun");
+    assert_eq!(r.at("Bur"), None);
+    assert!(
+        r.0.trace
+            .iter()
+            .any(|s| s.step == "validate" && s.rules.contains(&"PR-09".to_string()))
+    );
+}
+
+#[test]
+fn civil_disorder_disbands_dislodged_units() {
+    let (units, orders) = parse("FRA: A Mar-Bur, A Gas S A Mar-Bur; GER: A Bur H");
+    let mut state = board(units);
+    state.civil_disorder.push(diplomacy_gm_server::model::CivilDisorder {
+        power: Power::Germany,
+        since: state.phase,
+    });
+    let r = run_on(&state, &orders);
+    assert!(r.dislodged("Bur"));
+    assert!(
+        r.0.next_state.dislodged.is_empty(),
+        "R-CD-02: no retreat for a power in civil disorder"
+    );
+    assert_eq!(r.0.next_state.phase.to_string(), "F1901M");
+}
+
+// ----- DATC 6.H: retreats ------------------------------------------------------------------------
+
+#[test]
+fn datc_6h01_no_supports_during_retreat() {
+    let (_, r) = run_with_retreats(
+        "AUS: F Tri H, A Ser H; TUR: F Gre H; ITA: A Ven S A Tyr-Tri, A Tyr-Tri, F Ion-Gre, F Aeg S F Ion-Gre",
+        "AUS: F Tri-Alb, A Ser S F Tri-Alb; TUR: F Gre-Alb",
+    );
+    assert!(!r.valid("Ser"));
+    assert_eq!((r.outcome("Tri"), r.outcome("Gre")), (Fail, Fail));
+    assert_eq!(r.at("Alb"), None);
+}
+
+#[test]
+fn datc_6h03_no_convoy_during_retreat() {
+    let (_, r) = run_with_retreats(
+        "ENG: F Nth H, A Hol H; GER: F Kie S A Ruh-Hol, A Ruh-Hol",
+        "ENG: A Hol-Yor, F Nth C A Hol-Yor",
+    );
+    assert!(!r.valid("Hol") && !r.valid("Nth"));
+    assert_eq!(r.at("Yor"), None);
+}
+
+#[test]
+fn datc_6h04_no_other_moves_during_retreat() {
+    let (_, r) = run_with_retreats(
+        "ENG: F Nth H, A Hol H; GER: F Kie S A Ruh-Hol, A Ruh-Hol",
+        "ENG: A Hol-Bel, F Nth-Nrg",
+    );
+    assert_eq!(r.outcome("Hol"), Success);
+    assert!(!r.valid("Nth"));
+    assert_eq!(r.at("Bel"), Some((Power::England, UnitType::A)));
+    assert_eq!(r.at("Nth"), Some((Power::England, UnitType::F)));
+}
+
+#[test]
+fn datc_6h05_no_retreat_to_attackers_origin() {
+    let (_, r) = run_with_retreats("RUS: F Con S F Bla-Ank, F Bla-Ank; TUR: F Ank H", "TUR: F Ank-Bla");
+    assert!(!r.valid("Ank"));
+    assert_eq!(r.at("Bla"), None);
+}
+
+#[test]
+fn datc_6h06_no_retreat_to_contested_area() {
+    let (_, r) = run_with_retreats(
+        "AUS: A Bud S A Tri-Vie, A Tri-Vie; GER: A Mun-Boh, A Sil-Boh; ITA: A Vie H",
+        "ITA: A Vie-Boh",
+    );
+    assert!(!r.valid("Vie"));
+    assert_eq!(r.at("Boh"), None);
+}
+
+#[test]
+fn datc_6h08_triple_retreat_to_same_area() {
+    let (_, r) = run_with_retreats(
+        "ENG: A Lvp-Edi, F Yor S A Lvp-Edi, F Nwy H; GER: A Kie S A Ruh-Hol, A Ruh-Hol; \
+         RUS: F Edi H, A Swe S A Fin-Nwy, A Fin-Nwy, F Hol H",
+        "ENG: F Nwy-Nth; RUS: F Edi-Nth, F Hol-Nth",
+    );
+    for u in ["Nwy", "Edi", "Hol"] {
+        assert_eq!(r.outcome(u), Fail, "{u}");
+    }
+    assert_eq!(r.at("Nth"), None);
+}
+
+#[test]
+fn datc_6h09_dislodged_unit_does_not_contest_attackers_area() {
+    let (moves, r) = run_with_retreats(
+        "ENG: F Hel-Kie, F Den S F Hel-Kie; GER: A Ber-Pru, F Kie H, A Sil S A Ber-Pru; RUS: A Pru-Ber",
+        "GER: F Kie-Ber",
+    );
+    assert!(moves.standoffs().is_empty());
+    assert_eq!(r.outcome("Kie"), Success);
+    assert_eq!(r.at("Ber"), Some((Power::Germany, UnitType::F)));
+}
+
+#[test]
+fn datc_6h10_vacated_attacker_origin_is_open_to_others() {
+    let (_, r) = run_with_retreats(
+        "ENG: A Kie H; GER: A Ber-Kie, A Mun S A Ber-Kie, A Pru H; RUS: A War-Pru, A Sil S A War-Pru",
+        "ENG: A Kie-Ber; GER: A Pru-Ber",
+    );
+    assert!(!r.valid("Kie"), "Ber is the origin of the attack on Kie");
+    assert_eq!(r.outcome("Pru"), Success);
+    assert_eq!(r.at("Ber"), Some((Power::Germany, UnitType::A)));
+}
+
+#[test]
+fn datc_6h11_pr06_no_retreat_to_convoyed_attackers_origin() {
+    // DATC allows the retreat to Gas; this project follows the rulebook literally (PR-06).
+    let (moves, r) = run_with_retreats(
+        "FRA: A Gas-Mar via convoy, A Bur S A Gas-Mar, F Mid C A Gas-Mar, F Wes C A Gas-Mar, F GoL C A Gas-Mar; \
+         ITA: A Mar H",
+        "ITA: A Mar-Gas",
+    );
+    assert!(!moves.retreat_options("Mar").contains(&"Gas".to_string()));
+    assert!(!r.valid("Mar"));
+    assert_eq!(r.at("Gas"), None);
+}
+
+#[test]
+fn datc_6h15_no_coastal_crawl_in_retreat() {
+    // F Por cannot retreat to the other coast of Spa, the attacker's origin, and Mid is occupied:
+    // it has no retreat and is disbanded at once (R-RET-05).
+    let r = run("ENG: F Por H; FRA: F Spa/SC-Por, F Mid S F Spa/SC-Por");
+    assert!(r.dislodged("Por"));
+    assert!(r.retreat_options("Por").is_empty());
+    assert_eq!(r.0.next_state.phase.to_string(), "F1901M");
+}
+
+#[test]
+fn datc_6h16_contested_for_both_coasts() {
+    let (_, r) = run_with_retreats(
+        "FRA: F Mid-Spa/NC, F Gas-Spa/NC, F Wes H; ITA: F Tun S F Tyn-Wes, F Tyn-Wes",
+        "FRA: F Wes-Spa/SC",
+    );
+    assert!(!r.valid("Wes"));
+    assert_eq!(r.at("Spa"), None);
+}
+
+#[test]
+fn retreat_coast_is_inferred_when_only_one_is_open() {
+    // PR-04 in a retreat: F Rum can only reach Bul's east coast, so `Bul` means `Bul/EC`.
+    let (moves, r) = run_with_retreats(
+        "TUR: F Rum H; RUS: A Ukr-Rum, A Gal S A Ukr-Rum, A Sev H",
+        "TUR: F Rum-Bul",
+    );
+    assert_eq!(moves.retreat_options("Rum"), ["Bla", "Bul/EC"]);
+    assert_eq!(r.outcome("Rum"), Success);
+    assert_eq!(r.coast_at("Bul").as_deref(), Some("EC"));
+}
+
+// ----- DATC 6.I: building ------------------------------------------------------------------------
+
+fn adjust(state: &GameState, orders: &str) -> Res {
+    run_on(state, &parse(orders).1)
+}
+
+#[test]
+fn datc_6i01_too_many_build_orders() {
+    let r = adjust(&winter("GER: A Ruh, F Hol", &[]), "GER: B A War, B A Kie, B A Mun");
+    assert!(!r.valid("War"));
+    assert_eq!(r.outcome("Kie"), Success);
+    assert!(!r.valid("Mun"), "only one build is allowed (PR-15)");
+    assert_eq!(r.at("Mun"), None);
+    assert_eq!(r.0.next_state.phase.to_string(), "S1902M");
+}
+
+#[test]
+fn datc_6i02_fleets_cannot_be_built_inland() {
+    let r = adjust(&winter("RUS: A Ukr", &[]), "RUS: B F Mos");
+    assert!(!r.valid("Mos"));
+    assert!(r.rules("Mos").contains(&"R-ADJ-04".to_string()));
+}
+
+#[test]
+fn datc_6i03_supply_center_must_be_empty() {
+    let r = adjust(&winter("GER: A Ber", &[]), "GER: B A Ber");
+    assert!(!r.valid("Ber"));
+}
+
+#[test]
+fn datc_6i04_split_coast_build_needs_a_coast() {
+    let r = adjust(&winter("RUS: A Ukr", &[]), "RUS: B F StP");
+    assert!(!r.valid("StP"));
+    let r = adjust(&winter("RUS: A Ukr", &[]), "RUS: B F StP/NC");
+    assert_eq!(r.outcome("StP"), Success);
+    assert_eq!(r.coast_at("StP").as_deref(), Some("NC"));
+}
+
+#[test]
+fn datc_6i05_home_center_not_owned() {
+    let r = adjust(&winter("GER: A Ruh", &[("Ber", Some("RUS"))]), "GER: B A Ber");
+    assert!(!r.valid("Ber"));
+}
+
+#[test]
+fn datc_6i06_owned_center_that_is_not_home() {
+    let r = adjust(&winter("GER: A Ruh", &[("War", Some("GER"))]), "GER: B A War");
+    assert!(!r.valid("War"));
+}
+
+#[test]
+fn datc_6i07_only_one_build_per_home_center() {
+    let r = adjust(&winter("RUS: A Ukr", &[]), "RUS: B A Mos, B A Mos");
+    assert_eq!(r.0.orders[0].outcome, Success);
+    assert!(!r.0.orders[1].valid);
+    assert_eq!(r.0.next_state.units.len(), 2);
+}
+
+#[test]
+fn builds_not_ordered_are_waived() {
+    // R-ADJ-07 / PR-09: waive orders and missing builds both leave the slot unused.
+    let r = adjust(&winter("RUS: A Ukr", &[]), "RUS: waive Mos, B A War");
+    assert_eq!((r.outcome("Mos"), r.outcome("War")), (Success, Success));
+    assert_eq!(r.0.next_state.units.len(), 2);
+}
+
+// ----- DATC 6.J: disbanding and civil disorder ---------------------------------------------------
+
+#[test]
+fn datc_6j01_too_many_remove_orders() {
+    let r = adjust(
+        &winter("FRA: A Pic, A Par, A Bur, F Mid", &[]),
+        "FRA: F GoL D, A Pic D, A Par D",
+    );
+    assert!(!r.valid("GoL"));
+    assert_eq!(r.outcome("Pic"), Success);
+    assert!(!r.valid("Par"), "only one disband is required (PR-15)");
+    assert_eq!(r.at("Pic"), None);
+    assert_eq!(r.at("Par"), Some((Power::France, UnitType::A)));
+}
+
+#[test]
+fn datc_6j02_removing_the_same_unit_twice() {
+    let r = adjust(
+        &winter("FRA: A Pic, A Par, A Bur, F Mid, A Gas", &[]),
+        "FRA: A Par D, A Par D",
+    );
+    assert_eq!(r.0.orders[0].outcome, Success);
+    assert!(!r.0.orders[1].valid);
+    // The second disband is chosen by PR-08: all units are 1 step from home, fleets go first.
+    assert_eq!(r.at("Mid"), None);
+    assert_eq!(r.at("Par"), None);
+    assert_eq!(r.0.next_state.units.len(), 3);
+}
+
+fn russia_with_one_center(units: &str) -> GameState {
+    winter(units, &[("StP", None), ("Mos", None), ("War", None)])
+}
+
+#[test]
+fn datc_6j03_civil_disorder_two_armies_with_different_distance() {
+    let r = adjust(&russia_with_one_center("RUS: A Lvn, A Swe"), "");
+    assert_eq!(r.at("Swe"), None, "Swe is 2 steps from a home SC, Lvn 1");
+    assert_eq!(r.at("Lvn"), Some((Power::Russia, UnitType::A)));
+    assert!(r.0.trace.iter().any(|s| s.step == "default-disbands"));
+}
+
+#[test]
+fn datc_6j04_civil_disorder_two_armies_with_equal_distance() {
+    let r = adjust(&russia_with_one_center("RUS: A Lvn, A Ukr"), "");
+    assert_eq!(r.at("Lvn"), None, "Livonia comes before Ukraine");
+    assert_eq!(r.at("Ukr"), Some((Power::Russia, UnitType::A)));
+}
+
+#[test]
+fn civil_disorder_fleet_before_army_at_equal_distance() {
+    let r = adjust(&russia_with_one_center("RUS: A Fin, F Bot"), "");
+    assert_eq!(r.at("Bot"), None);
+    assert_eq!(r.at("Fin"), Some((Power::Russia, UnitType::A)));
+}
+
+#[test]
+fn civil_disorder_gm_disbands_take_precedence_and_no_builds() {
+    let mut state = russia_with_one_center("RUS: A Lvn, A Swe; GER: A Ruh");
+    for p in [Power::Russia, Power::Germany] {
+        state.civil_disorder.push(diplomacy_gm_server::model::CivilDisorder {
+            power: p,
+            since: state.phase,
+        });
+    }
+    let r = adjust(&state, "RUS: A Lvn D; GER: B A Ber");
+    assert_eq!(r.outcome("Lvn"), Success, "a disband entered by the GM is used (PR-08)");
+    assert_eq!(r.at("Swe"), Some((Power::Russia, UnitType::A)));
+    assert!(!r.valid("Ber"), "no builds in civil disorder (R-CD-02, PR-16)");
+}
+
+#[test]
+fn eliminated_powers_are_reported() {
+    let state = winter(
+        "GER: A Ruh",
+        &[("Con", Some("GER")), ("Ank", Some("GER")), ("Smy", Some("GER"))],
+    );
+    let r = adjust(&state, "");
+    let result = r.0.trace.iter().find(|s| s.step == "result").unwrap();
+    assert_eq!(result.details["eliminated"], serde_json::json!(["TUR"]));
+}
+
+// ----- phase skipping ----------------------------------------------------------------------------
+
+#[test]
+fn adjustment_phase_is_skipped_when_nobody_adjusts() {
+    // Fall with no SC changes from the starting position: straight to Spring 1902.
+    let mut state = GameState::standard_start();
+    state.phase = "F1901M".parse().unwrap();
+    let r = run_on(&state, &[]);
+    assert_eq!(r.0.next_state.phase.to_string(), "S1902M");
 }

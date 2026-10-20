@@ -172,5 +172,6 @@ Expected:
 - Fall 1902 Russian order `F Swe S StP-Nwy` omits the unit type — valid per R-ORD-06 (good parser test).
 - Abbreviations in the sample (`Port`, `Galacia`) are spelling variants; the parser should accept or the test should normalise them.
 
-> These sample-game expectations were derived by hand from the rulebook commentary and should be
-> double-checked once the engine runs them.
+> These sample-game expectations were derived by hand from the rulebook commentary. The engine test
+> `sample_game` (server/tests/rulebook.rs) runs all of them, from Spring 1901 through the Winter 1902
+> adjustments, and they match.

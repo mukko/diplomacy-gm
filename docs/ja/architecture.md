@@ -32,7 +32,7 @@
 | 構成要素 | 責務 | 技術 *（提案）* |
 |----------|------|-----------------|
 | `server/` | REST API、ゲームのライフサイクル、永続化、裁定器の呼び出し | **Rust**（axum、tokio、serde） *（決定）* |
-| 裁定器（`server/` 内またはその隣） | 純粋な裁定器: `adjudicate(state, orders) → Resolution`。I/O なし。サーバーの `Adjudicator` トレイトに差し込む。 | Rust、`cargo test`。DATC ＋ [test-cases.md](test-cases.md) |
+| 裁定器（`server/src/engine/`） | 純粋な裁定器: `adjudicate(state, orders) → Resolution`。I/O なし。サーバーの `Adjudicator` トレイトに差し込む。 | Rust、`cargo test`。DATC ＋ [test-cases.md](test-cases.md) |
 | `web/` | 地図描画、命令入力、進行状況、トレース再生 | React ＋ Vite、SVG 地図 |
 | `shared/` | マップデータ（`standard.json`: 地域・海岸・隣接、のちに SVG 座標）。サーバーと GUI の両方が読む。GUI 用の TypeScript のマップ型とテスト | JSON（＋ TypeScript、Vitest） |
 | 永続化 | 1 ゲームにつき 1 つの JSON セーブファイル（§ 5） | ファイル *（決定）* |
@@ -49,7 +49,7 @@
 ```
 
 - 合法な撤退先を持つユニットがなければ撤退フェイズ（`R`）はスキップ。
-- 建設・解散が必要な列強がなければ調整フェイズ（`A`）はスキップ。
+- 建設・解散が必要な列強がなければ調整フェイズ（`A`）はスキップ（PR-17）。
 - フェイズは GM の操作で（または設定により全列強の提出完了時に）解決する。
   何も提出しなかった列強は R-ORD-03 / PR-09 に従って扱う。内乱は GM が宣言した場合のみ適用する（PR-16）。
 
@@ -131,7 +131,7 @@
 
 スタート画面: **新規ゲーム** → `POST /games`、**ロード** → `GET /games` のあと `GET /games/:id`
 （またはセーブファイルを `POST /games/import`）、**再生** → `GET /games/:id/replay`。
-実装済みのルートには ✔ を付けた。裁定器ができるまで `resolve` は `501` を返す。
+実装済みのルートには ✔ を付けた。`resolve` は移動・撤退・調整フェイズを裁定する。
 
 | メソッドとパス | 目的 |
 |----------------|------|

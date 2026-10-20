@@ -30,7 +30,7 @@ Negotiation itself happens outside the tool (in person or elsewhere). The tool d
 | Component | Responsibility | Tech *(proposed)* |
 |-----------|----------------|-------------------|
 | `server/` | REST API, game lifecycle, persistence, calls adjudicator | **Rust** (axum, tokio, serde) *(decided)* |
-| Adjudicator (in or next to `server/`) | Pure adjudicator: `adjudicate(state, orders) → Resolution`. No I/O. Plugs into the server's `Adjudicator` trait. | Rust, `cargo test`; DATC + [test-cases.md](test-cases.md) |
+| Adjudicator (`server/src/engine/`) | Pure adjudicator: `adjudicate(state, orders) → Resolution`. No I/O. Plugs into the server's `Adjudicator` trait. | Rust, `cargo test`; DATC + [test-cases.md](test-cases.md) |
 | `web/` | Map rendering, order entry, progress, trace replay | React + Vite, SVG map |
 | `shared/` | Map data (`standard.json`: provinces, coasts, adjacency, later SVG coordinates), read by both server and GUI; TypeScript map types/tests for the GUI | JSON (+ TypeScript, Vitest) |
 | Persistence | One JSON save file per game (§ 5) | Files *(decided)* |
@@ -47,7 +47,7 @@ create game ─▶ S1901M ─▶ [S1901R] ─▶ F1901M ─▶ [F1901R] ─▶ W
 ```
 
 - Retreat phases (`R`) are skipped when no unit has a legal retreat.
-- Adjustment phase (`A`) is skipped when no power needs to build or disband.
+- Adjustment phase (`A`) is skipped when no power needs to build or disband (PR-17).
 - A phase is resolved when the GM triggers it (or all powers have submitted, depending on settings).
   Powers that submitted nothing are treated per R-ORD-03 / PR-09; civil disorder applies only when declared by the GM (PR-16).
 
@@ -131,7 +131,7 @@ frame for the current position. Within a frame the GUI steps through `resolution
 
 Start screen: **New game** → `POST /games`; **Load** → `GET /games` then `GET /games/:id`
 (or `POST /games/import` with a save file); **Replay** → `GET /games/:id/replay`.
-Implemented so far: the routes marked ✔. Until the adjudicator exists, `resolve` returns `501`.
+Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retreat and adjustment phases.
 
 | Method & path | Purpose |
 |---------------|---------|

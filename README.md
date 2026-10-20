@@ -6,8 +6,9 @@ A game-master tool for the board game ***Diplomacy***: an **API server** that ad
 according to the official rules and returns results with step-by-step reasoning, and a **GUI**
 that shows the map and game progress, accepts order input, and replays each resolution step.
 
-> Status: **early development.** Map data and the Rust API server (game lifecycle, JSON save
-> files, replay) exist; the adjudicator and the GUI do not yet.
+> Status: **early development.** Map data, the Rust API server (game lifecycle, JSON save
+> files, replay) and the adjudicator (movement, retreat and adjustment phases, with a
+> step-by-step trace) exist; the GUI does not yet.
 
 ## Development
 

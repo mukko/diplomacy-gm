@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
-use diplomacy_gm_server::adjudicator::{AdjudicationError, Adjudicator, PendingEngine};
+use diplomacy_gm_server::adjudicator::{AdjudicationError, Adjudicator};
 use diplomacy_gm_server::api::{AppState, router};
 use diplomacy_gm_server::engine::Engine;
 use diplomacy_gm_server::game::Game;
@@ -114,7 +114,7 @@ const GERMAN_ORDERS: &str = r#"[
 #[tokio::test]
 async fn new_game_creates_one_save_file() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(Engine));
     let id = new_game(&app).await;
 
     assert_eq!(json_files(dir.path()), vec![format!("{id}.json")]);
@@ -138,7 +138,7 @@ async fn new_game_creates_one_save_file() {
 async fn orders_are_saved_and_restored_after_restart() {
     let dir = tempfile::tempdir().unwrap();
     let id = {
-        let app = app(dir.path(), Arc::new(PendingEngine));
+        let app = app(dir.path(), Arc::new(Engine));
         let id = new_game(&app).await;
         let (status, body) = call(
             &app,
@@ -153,7 +153,7 @@ async fn orders_are_saved_and_restored_after_restart() {
     assert_eq!(read_save(dir.path(), &id)["orders"]["GER"].as_array().unwrap().len(), 3);
 
     // New server instance on the same directory = restart.
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(Engine));
     let (status, game) = call(&app, Method::GET, &format!("/games/{id}"), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(game["state"]["phase"], "S1901M");
@@ -165,7 +165,7 @@ async fn orders_are_saved_and_restored_after_restart() {
 #[tokio::test]
 async fn order_submission_is_checked() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(Engine));
     let id = new_game(&app).await;
     let before = read_save(dir.path(), &id);
 
@@ -194,16 +194,150 @@ async fn order_submission_is_checked() {
     );
 }
 
+/// An engine that always fails, to check that a failed resolve leaves the game untouched.
+struct FailingEngine;
+
+impl Adjudicator for FailingEngine {
+    fn adjudicate(&self, _state: &GameState, _orders: &[Order]) -> Result<Resolution, AdjudicationError> {
+        Err(AdjudicationError::Failed("test".into()))
+    }
+}
+
 #[tokio::test]
-async fn resolve_without_engine_is_501_and_changes_nothing() {
+async fn failed_resolve_is_500_and_changes_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(FailingEngine));
     let id = new_game(&app).await;
     let before = read_save(dir.path(), &id);
     let (status, body) = call(&app, Method::POST, &format!("/games/{id}/phases/S1901M/resolve"), None).await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(body["error"], "adjudicator-not-implemented");
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["error"], "adjudication-failed");
     assert_eq!(read_save(dir.path(), &id), before);
+}
+
+#[tokio::test]
+async fn engine_resolves_retreat_and_adjustment_phases() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let put = |phase: &str, power: &str, body: &str| {
+        let uri = format!("/games/{id}/phases/{phase}/orders/{power}");
+        let app = app.clone();
+        let body = body.to_string();
+        async move {
+            let (status, res) = call(&app, Method::PUT, &uri, Some(body)).await;
+            assert!(status.is_success(), "{res}");
+        }
+    };
+    let resolve = |phase: &str| {
+        let uri = format!("/games/{id}/phases/{phase}/resolve");
+        let app = app.clone();
+        async move {
+            let (status, res) = call(&app, Method::POST, &uri, None).await;
+            assert_eq!(status, StatusCode::OK, "{res}");
+            res
+        }
+    };
+
+    // Spring 1901: Germany takes Den, France moves next to Bel.
+    put(
+        "S1901M",
+        "GER",
+        r#"[{ "power": "GER", "unit": "Kie", "type": "move", "to": "Den" }]"#,
+    )
+    .await;
+    put(
+        "S1901M",
+        "FRA",
+        r#"[{ "power": "FRA", "unit": "Par", "type": "move", "to": "Pic" }]"#,
+    )
+    .await;
+    let res = resolve("S1901M").await;
+    assert_eq!(res["nextState"]["phase"], "F1901M");
+
+    // Fall 1901: Germany keeps Den and France takes Bel. Both gain a build, so the
+    // adjustment phase follows.
+    put(
+        "F1901M",
+        "FRA",
+        r#"[{ "power": "FRA", "unit": "Pic", "type": "move", "to": "Bel" }]"#,
+    )
+    .await;
+    let res = resolve("F1901M").await;
+    assert_eq!(res["nextState"]["phase"], "W1901A");
+    assert_eq!(res["nextState"]["supplyCenters"]["Den"], "GER");
+    assert_eq!(res["nextState"]["supplyCenters"]["Bel"], "FRA");
+
+    put(
+        "W1901A",
+        "GER",
+        r#"[{ "power": "GER", "unit": "Kie", "type": "build", "unitType": "F" }]"#,
+    )
+    .await;
+    put(
+        "W1901A",
+        "FRA",
+        r#"[{ "power": "FRA", "unit": "Par", "type": "build", "unitType": "A" }]"#,
+    )
+    .await;
+    let res = resolve("W1901A").await;
+    assert_eq!(res["nextState"]["phase"], "S1902M");
+    let units = res["nextState"]["units"].as_array().unwrap();
+    assert_eq!(units.len(), 24);
+    assert!(units.iter().any(|u| u["location"] == "Kie" && u["type"] == "F"));
+    let steps: Vec<&str> = res["trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["step"].as_str().unwrap())
+        .collect();
+    assert_eq!(steps.last(), Some(&"result"));
+
+    // 1902: Germany dislodges the French army in Bel, which retreats to Pic; after the Fall
+    // retreat phase SC ownership is updated.
+    put(
+        "S1902M",
+        "GER",
+        r#"[
+      { "power": "GER", "unit": "Mun", "type": "move", "to": "Ruh" },
+      { "power": "GER", "unit": "Ber", "type": "move", "to": "Kie" },
+      { "power": "GER", "unit": "Kie", "type": "move", "to": "Hol" }
+    ]"#,
+    )
+    .await;
+    let res = resolve("S1902M").await;
+    assert_eq!(res["nextState"]["phase"], "F1902M");
+    put(
+        "F1902M",
+        "GER",
+        r#"[
+      { "power": "GER", "unit": "Ruh", "type": "move", "to": "Bel" },
+      { "power": "GER", "unit": "Hol", "type": "support", "target": "Ruh", "to": "Bel" }
+    ]"#,
+    )
+    .await;
+    let res = resolve("F1902M").await;
+    assert_eq!(res["nextState"]["phase"], "F1902R");
+    assert_eq!(res["nextState"]["dislodged"][0]["location"], "Bel");
+    put(
+        "F1902R",
+        "FRA",
+        r#"[{ "power": "FRA", "unit": "Bel", "type": "retreat", "to": "Pic" }]"#,
+    )
+    .await;
+    let res = resolve("F1902R").await;
+    let steps: Vec<&str> = res["trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["step"].as_str().unwrap())
+        .collect();
+    assert!(
+        steps.contains(&"sc-ownership") && steps.contains(&"victory-check"),
+        "{steps:?}"
+    );
+    assert_eq!(res["nextState"]["supplyCenters"]["Bel"], "GER");
+    assert_eq!(res["nextState"]["phase"], "W1902A");
 }
 
 #[tokio::test]
@@ -287,7 +421,7 @@ async fn resolved_phases_are_saved_and_replayable() {
     );
 
     // Replay (after a restart): one frame per resolved phase plus the current position.
-    let app = self::app(dir.path(), Arc::new(PendingEngine));
+    let app = self::app(dir.path(), Arc::new(Engine));
     let (status, replay) = call(&app, Method::GET, &format!("/games/{id}/replay"), None).await;
     assert_eq!(status, StatusCode::OK);
     let frames = replay["frames"].as_array().unwrap();
@@ -422,7 +556,7 @@ async fn broken_save_data_is_rejected() {
 #[tokio::test]
 async fn unknown_and_invalid_ids() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(Engine));
     assert_eq!(
         call(&app, Method::GET, "/games/g_missing", None).await.0,
         StatusCode::NOT_FOUND
@@ -440,7 +574,7 @@ async fn unknown_and_invalid_ids() {
 #[tokio::test]
 async fn map_endpoint_serves_shared_map() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path(), Arc::new(PendingEngine));
+    let app = app(dir.path(), Arc::new(Engine));
     let (status, map) = call(&app, Method::GET, "/maps/standard", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(map["provinces"].as_array().unwrap().len(), 75);
