@@ -51,9 +51,11 @@ The GUI submits structured orders, but a text parser is provided for convenience
 | Move to split-coast province with two reachable coasts and no coast given | Hold (R-MAP-07) |
 | Move with a coast that is not reachable | Hold (PR-04) |
 | Support: supporter could move to the target province (R-SUP-02/03) | Hold |
+| Support of an army move to a non-adjacent province: a convoy route exists on this board without the supporter (PR-19) | Hold |
 | Support: a unit exists at the supported location | Hold |
 | Convoy: ordering unit is a fleet in a water province (R-CVY-01); convoyed unit is an army (R-CVY-02) | Hold |
 | Convoy: origin and destination are coastal | Hold |
+| Convoy: the fleet is on a possible convoy route between them on this board (PR-19) | Hold |
 
 Note: "support/convoy does not match the actual order" is **not** a validation failure — the order is
 legal, it simply provides nothing during resolution (R-SUP-06, R-CVY-04).
@@ -82,7 +84,7 @@ For each order the adjudicator determines:
 | **Hold strength** of province P | 0 if P is empty, or if its unit moved away successfully. 1 if its unit tried to move but failed. Otherwise 1 + number of given hold-supports. |
 | **Attack strength** of move X→P | 0 if no `path`. If P is empty, or P's unit moves away successfully (and is not in a head-to-head with X): 1 + given supports. Otherwise: 0 if P's unit belongs to X's power (R-SLF-01); else 1 + given supports **excluding supports from P's owner** (R-SLF-02). |
 | **Defend strength** of move X→P (head-to-head only) | 1 + given supports. |
-| **Prevent strength** of move X→P | 0 if no `path`. 0 if X is in a head-to-head battle and the opposing move succeeded (R-STD-07). Otherwise 1 + given supports (own-power supports count here — PR-02). |
+| **Prevent strength** of move X→P | 0 if no `path`. 0 if X is in a head-to-head battle and the opposing move succeeded (R-STD-07, PR-20). Otherwise 1 + given supports (own-power supports count here — PR-02). |
 
 ### 3.3 Decision rules
 
@@ -167,6 +169,9 @@ confirmed by the project owner.
 | PR-15 | Excess or invalid adjustment orders | Invalid ignored (R-ADJ-01); builds beyond entitlement ignored in submission order; build in an occupied or non-controlled home SC is invalid. **(open)** A waive order uses up one build in submission order, like a build. | R-ADJ |
 | PR-16 | Civil disorder trigger | **Declared by the GM**, never automatic. The GM records the declaration (power, starting phase) in the tool and can lift it later (e.g. a replacement player joins). While declared: movement — all orders ignored, units hold, no mutual support (R-CD-01); retreat — dislodged units disbanded (R-CD-02); adjustment — no builds, required removals chosen by R-CD-03. **(open)** Disband orders filed for a power in civil disorder are treated as GM-entered and used (PR-08); its build orders are ignored. A power that merely failed to submit orders without a declaration is handled by R-ORD-03 / PR-09. | R-CD-01, R-CD-02 |
 | PR-17 | Skipping the adjustment phase | **(open)** The adjustment phase is skipped when no power must disband and no power can build: a power owed builds counts only if it is not in civil disorder and has at least one unoccupied home SC it controls (R-ADJ-03/05, R-CD-02). | architecture.md § 3 |
+| PR-18 | Coast named in a support into a split-coast province | Not checked: the support counts for the move into that province even if the coast it names differs from the coast of the supported move (R-SUP-03). Differs from DATC 6.B.9, which voids such a support. Confirmed by the project owner. | R-SUP-03, R-SUP-06 |
+| PR-19 | Support or convoy for a move impossible on the current board | Invalid, the unit holds (R-ORD-04). (a) A support of an army's move to a province it is not adjacent to, when no convoy route exists on the board without the supporting fleet (a fleet cannot support and convoy at once). (b) A convoy by a fleet that is on no convoy route between the two coasts on the board; a route is a chain of fleets without a shortcut, so a fleet that a shorter chain bypasses is not on it. Such an order also shows no convoy intent (R-CVY-11). The order options offered to the GUI use the same check. As DATC 6.D.31, 6.G.7, 6.G.19. Confirmed by the project owner. | R-CVY-03, R-SUP-02 |
+| PR-20 | R-STD-07 and convoyed attacks | R-STD-07 applies only to a head-to-head battle (both moves over land). A unit dislodged by a **convoyed** attacker can still bounce other moves into the attacker's origin (prevent strength, § 3.2). DATC issue 4.A.7 choice b; cases 6.G.10, 6.G.14, 6.G.15. Confirmed by the project owner. | R-STD-07 |
 
 ## 6. Retreat phase
 

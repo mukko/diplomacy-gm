@@ -1,7 +1,7 @@
 //! DATC (Diplomacy Adjudicator Test Cases, L. B. Kruijswijk, v3.0 numbering) movement-phase cases
 //! 6.A–6.G as engine tests. Where DATC offers options, the rulebook (2000/2008) option is used
-//! unless a project ruling (docs/en/adjudication.md § 5) says otherwise. Cases that our rules do
-//! not settle are listed with a `// skipped:` comment instead of a test.
+//! unless a project ruling (docs/en/adjudication.md § 5) says otherwise; where a ruling departs
+//! from DATC the test says so.
 //!
 //! Retreat and adjustment cases (6.H–6.J) and the paradoxes 6.F.16 / 6.F.22 are in rulebook.rs.
 
@@ -188,10 +188,16 @@ fn datc_6b08_supporting_with_unspecified_coast_when_only_one_coast_is_possible()
     assert_eq!((r.outcome("Gas"), r.outcome("Wes")), (Fail, Fail));
 }
 
-// skipped: 6.B.9 (supporting with wrong coast). DATC wants `F Por S F Mid-Spa/NC` to be void when
-// F Mid moves to Spa/SC. Our rules let a support into a split-coast province count "regardless of
-// coast" (R-SUP-03) and R-SUP-06 does not say whether a coast in the support must match, so the
-// engine (which only compares provinces) gives the support. Needs a ruling.
+#[test]
+fn datc_6b09_supporting_with_wrong_coast() {
+    // Differs from DATC (support void): a support into a split-coast province counts whatever
+    // coast it names (R-SUP-03, PR-18), so the Italian fleet bounces.
+    let r = run("FRA: F Por S F Mid-Spa/NC, F Mid-Spa/SC; ITA: F GoL S F Wes-Spa/SC, F Wes-Spa/SC");
+    assert!(r.valid("Por"));
+    assert_eq!(r.outcome("Por"), Success, "PR-18");
+    assert_eq!((r.outcome("Mid"), r.outcome("Wes")), (Fail, Fail));
+    assert_eq!(r.at("Spa"), None);
+}
 
 #[test]
 fn datc_6b10_unit_ordered_with_wrong_coast() {
@@ -585,10 +591,15 @@ fn datc_6d30_move_without_coast_and_support() {
     assert!(!r.dislodged("Con"));
 }
 
-// skipped: 6.D.31 (a tricky impossible support). DATC wants `F Bla S A Rum-Arm` to be illegal
-// because the only convoy route runs through the supporter itself. Our validation (adjudication.md
-// § 2.2, R-SUP-02) only asks whether the supporter could move to Armenia, so the support is legal
-// (and gives nothing, as the army has no route). Needs a ruling.
+#[test]
+fn datc_6d31_a_tricky_impossible_support() {
+    // The only convoy route runs through the supporter itself, which cannot also convoy (PR-19).
+    let r = run("AUS: A Rum-Arm; TUR: F Bla S A Rum-Arm");
+    assert!(!r.valid("Bla"));
+    assert!(r.rules("Bla").contains(&"PR-19".to_string()));
+    assert_eq!(r.outcome("Rum"), Fail);
+    assert_eq!(r.at("Rum"), Some((AUS, UnitType::A)));
+}
 
 #[test]
 fn datc_6d32_a_missing_fleet() {
@@ -1083,10 +1094,17 @@ fn datc_6g06_swapping_with_unintended_intent() {
     assert_eq!(r.at("Lvp"), Some((GER, UnitType::A)));
 }
 
-// skipped: 6.G.7 (swapping with illegal intent). DATC treats `F Bot C A Swe-Nwy` as illegal (the
-// Gulf of Bothnia cannot be on any route) so it shows no intent and the armies bounce. Our
-// validation (adjudication.md § 2.2) only checks that both ends are coastal, so the order is legal,
-// the own fleet makes the army take the convoy (R-CVY-11) and the units swap. Needs a ruling.
+#[test]
+fn datc_6g07_swapping_with_illegal_intent() {
+    // F Bot cannot be on any route from Sweden to Norway: its convoy is illegal (PR-19), so it
+    // shows no intent, the land route is used and the head-to-head battle bounces.
+    let r = run("ENG: F Ska C A Swe-Nwy, F Nwy-Swe; RUS: A Swe-Nwy, F Bot C A Swe-Nwy");
+    assert!(!r.valid("Bot"));
+    assert!(r.rules("Bot").contains(&"PR-19".to_string()));
+    assert_eq!((r.outcome("Nwy"), r.outcome("Swe")), (Fail, Fail));
+    assert_eq!(r.at("Nwy"), Some((ENG, UnitType::F)));
+    assert_eq!(r.at("Swe"), Some((RUS, UnitType::A)));
+}
 
 #[test]
 fn datc_6g08_explicit_convoy_that_isnt_there() {
@@ -1107,11 +1125,9 @@ fn datc_6g09_swapped_or_dislodged() {
     assert_eq!(r.at("Nwy"), Some((RUS, UnitType::A)));
 }
 
-// 6.G.10, 6.G.14, 6.G.15: whether the unit dislodged by a convoyed attacker still bounces a third
-// unit in the attacker's origin (DATC issue 4.A.7). adjudication.md § 3.2 zeroes the prevent
-// strength only in a head-to-head battle (choice b, DATC's preference), but R-STD-07 read
-// literally ("no effect on the province the attack came from") gives choice a. The tests check
-// everything else and leave that move unasserted until a ruling exists.
+// 6.G.10, 6.G.14, 6.G.15: a unit dislodged by a convoyed attacker still bounces a third unit in
+// the attacker's origin (DATC issue 4.A.7, choice b): R-STD-07 applies only to head-to-head
+// battles (PR-20, adjudication.md § 3.2).
 
 #[test]
 fn datc_6g10_swapped_or_an_head_to_head_battle() {
@@ -1123,7 +1139,8 @@ fn datc_6g10_swapped_or_an_head_to_head_battle() {
     assert_eq!(r.outcome("Swe"), Fail);
     assert!(r.dislodged("Swe"));
     assert_eq!(r.at("Swe"), Some((ENG, UnitType::A)));
-    // Unasserted (4.A.7): F Nrg-Nwy.
+    assert_eq!(r.outcome("Nrg"), Fail, "PR-20");
+    assert_eq!(r.at("Nrg"), Some((FRA, UnitType::F)));
 }
 
 #[test]
@@ -1164,7 +1181,8 @@ fn datc_6g14_bounce_by_convoy_to_adjacent_province() {
     assert_eq!(r.outcome("Nwy"), Success);
     assert_eq!(r.outcome("Swe"), Fail);
     assert!(r.dislodged("Swe"));
-    // Unasserted (4.A.7): F Nrg-Nwy.
+    assert_eq!(r.outcome("Nrg"), Fail, "PR-20");
+    assert_eq!(r.at("Nrg"), Some((FRA, UnitType::F)));
 }
 
 #[test]
@@ -1177,7 +1195,8 @@ fn datc_6g15_bounce_and_dislodge_with_double_convoy() {
     assert_eq!(r.outcome("Bel"), Fail);
     assert!(r.dislodged("Bel"));
     assert_eq!(r.at("Bel"), Some((ENG, UnitType::A)));
-    // Unasserted (4.A.7): A Yor-Lon.
+    assert_eq!(r.outcome("Yor"), Fail, "PR-20");
+    assert_eq!(r.at("Yor"), Some((ENG, UnitType::A)));
 }
 
 #[test]
@@ -1214,10 +1233,16 @@ fn datc_6g18_the_two_unit_in_one_area_bug_with_double_convoy() {
     assert_eq!(r.at("Yor"), Some((ENG, UnitType::A)));
 }
 
-// skipped: 6.G.19 (swapping with intent of unnecessary convoy). DATC treats the French
-// `F Wes C A Mar-Spa` as illegal (not necessary for any route), so there is no own-fleet intent
-// and the armies bounce. Our validation accepts the order, R-CVY-11 then uses the convoy (via the
-// Italian fleet in GoL) and the armies swap. Same open question as 6.G.7.
+#[test]
+fn datc_6g19_swapping_with_intent_of_unnecessary_convoy() {
+    // F Wes is not necessary for any route (GoL alone links Mar and Spa): its convoy is illegal
+    // (PR-19), the only remaining convoy is foreign, so the land route is used (R-CVY-11).
+    let r = run("FRA: A Mar-Spa, F Wes C A Mar-Spa; ITA: F GoL C A Mar-Spa, A Spa-Mar");
+    assert!(!r.valid("Wes"));
+    assert!(r.rules("Wes").contains(&"PR-19".to_string()));
+    assert_eq!((r.outcome("Mar"), r.outcome("Spa")), (Fail, Fail));
+    assert_eq!(r.at("Mar"), Some((FRA, UnitType::A)));
+}
 
 #[test]
 fn datc_6g20_explicit_convoy_to_adjacent_province_disrupted() {
