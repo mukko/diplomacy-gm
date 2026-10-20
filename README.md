@@ -10,6 +10,19 @@ that shows the map and game progress, accepts order input, and replays each reso
 > files, replay), the adjudicator (movement, retreat and adjustment phases, with a
 > step-by-step trace) and a first version of the web GUI (Japanese/English) exist.
 
+## Quick start
+
+Requires [Node.js](https://nodejs.org/) (npm) and [Rust](https://www.rust-lang.org/) (cargo).
+
+```bash
+./start.sh
+```
+
+This installs the GUI's dependencies on the first run, builds the GUI and the server when something
+changed, starts the server on <http://127.0.0.1:8080/> and opens it in the browser. Games are saved in
+`data/games/`. Stop it with Ctrl+C. Options: `--port 9000`, `--data-dir DIR`, `--no-open`, `--rebuild`
+(`./start.sh --help`).
+
 ## Development
 
 ```bash
