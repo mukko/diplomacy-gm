@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::adjustment::{check_build, default_disbands as choose_disbands};
 use super::common::{build_sites, in_civil_disorder, sc_count, unit_count, unit_label};
-use super::validate::{Cmd, convoy_possible, convoy_possible_via, validate};
+use super::validate::{self as validation, Cmd, Verdict, convoy_possible, convoy_possible_via, validate};
 use super::{Engine, province, province_type};
 use crate::adjudicator::Adjudicator;
 use crate::map::{self, ProvinceType};
@@ -186,6 +186,88 @@ pub fn default_disbands(state: &GameState, orders: &[Order]) -> Vec<DisbandPropo
                 ordered,
                 proposed,
             })
+        })
+        .collect()
+}
+
+/// How the adjudicator will treat a submitted order (architecture.md § 6, `PUT …/orders`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OrderStatus {
+    /// Executed as written (it may still fail or bounce during resolution).
+    Valid,
+    /// Movement phase: not executable, the unit holds instead (R-ORD-04).
+    Hold,
+    /// Retreat phase: not executable, the unit is disbanded (§ 6, R-RET-07).
+    Disband,
+    /// Applies to no unit or exceeds what the power may order; it has no effect
+    /// (PR-05, PR-14, PR-15, PR-16, R-ADJ-01).
+    Ignored,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderCheck {
+    pub order: Order,
+    pub status: OrderStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub rules: Vec<String>,
+}
+
+/// Validate one power's submitted orders for the current phase, exactly as the adjudicator
+/// will (adjudication.md § 2). Results are in submission order.
+pub fn check_orders(state: &GameState, orders: &[Order]) -> Vec<OrderCheck> {
+    let check = |order: &Order, status, reason: Option<String>, rules: Vec<String>| OrderCheck {
+        order: order.clone(),
+        status,
+        reason,
+        rules,
+    };
+    if state.phase.kind == PhaseKind::Movement {
+        let checked = validation::check(state, orders);
+        return orders
+            .iter()
+            .zip(checked.verdicts)
+            .map(|(order, verdict)| match verdict {
+                Verdict::Accepted { .. } => check(order, OrderStatus::Valid, None, Vec::new()),
+                Verdict::Invalid { reason, mut rules, .. } => {
+                    rules.push("R-ORD-04");
+                    check(order, OrderStatus::Hold, Some(reason), super::common::strings(&rules))
+                }
+                Verdict::Ignored { reason, rules } => check(
+                    order,
+                    OrderStatus::Ignored,
+                    Some(reason),
+                    super::common::strings(&rules),
+                ),
+            })
+            .collect();
+    }
+    let Ok(resolution) = Engine.adjudicate(state, orders) else {
+        return Vec::new();
+    };
+    resolution
+        .orders
+        .into_iter()
+        .map(|r| {
+            let own_dislodged = state.phase.kind == PhaseKind::Retreat
+                && !in_civil_disorder(state, r.order.power)
+                && state
+                    .dislodged
+                    .iter()
+                    .any(|d| d.power == r.order.power && d.location == province(&r.order.unit));
+            let status = match (r.valid, own_dislodged) {
+                (true, _) => OrderStatus::Valid,
+                (false, true) => OrderStatus::Disband,
+                (false, false) => OrderStatus::Ignored,
+            };
+            // A valid order keeps no reason here: conflicts are decided only at resolution.
+            let (reason, rules) = if r.valid {
+                (None, Vec::new())
+            } else {
+                (r.reason, r.rules)
+            };
+            check(&r.order, status, reason, rules)
         })
         .collect()
 }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use diplomacy_gm_server::adjudicator::Adjudicator;
 use diplomacy_gm_server::engine::Engine;
-use diplomacy_gm_server::engine::options::{default_disbands, power_options, unit_options};
+use diplomacy_gm_server::engine::options::{OrderStatus, check_orders, default_disbands, power_options, unit_options};
 use diplomacy_gm_server::model::{CivilDisorder, GameState, Order, OrderKind, Power, Unit, UnitType};
 
 fn unit(power: Power, unit_type: UnitType, location: &str) -> Unit {
@@ -264,4 +264,125 @@ fn default_disbands_take_submitted_disbands_first() {
     assert_eq!(p.proposed[0].unit, "A Swe");
 
     assert!(default_disbands(&GameState::standard_start(), &[]).is_empty());
+}
+
+fn mv(power: Power, unit: &str, to: &str) -> Order {
+    Order {
+        power,
+        unit: unit.into(),
+        kind: OrderKind::Move {
+            to: to.into(),
+            via_convoy: false,
+        },
+    }
+}
+
+fn statuses(state: &GameState, orders: &[Order]) -> Vec<OrderStatus> {
+    check_orders(state, orders).into_iter().map(|c| c.status).collect()
+}
+
+#[test]
+fn order_checks_in_a_movement_phase() {
+    let s = GameState::standard_start();
+    let orders = [
+        mv(Power::Italy, "Ven", "Pie"),
+        mv(Power::Italy, "Nap", "Ven"), // fleet: Nap does not border Ven → holds
+        mv(Power::Italy, "Par", "Bur"), // not Italy's unit → ignored
+    ];
+    let checks = check_orders(&s, &orders);
+    assert_eq!(
+        checks.iter().map(|c| c.status).collect::<Vec<_>>(),
+        [OrderStatus::Valid, OrderStatus::Hold, OrderStatus::Ignored]
+    );
+    assert!(checks[1].rules.contains(&"R-ORD-04".to_string()) && checks[1].reason.is_some());
+    assert!(checks[2].rules.contains(&"PR-14".to_string()));
+    assert!(checks[0].reason.is_none());
+}
+
+#[test]
+fn order_checks_in_retreat_and_adjustment_phases() {
+    let s = board(vec![
+        unit(Power::France, UnitType::A, "Mar"),
+        unit(Power::France, UnitType::A, "Gas"),
+        unit(Power::Germany, UnitType::A, "Bur"),
+    ]);
+    let orders = vec![
+        mv(Power::France, "Mar", "Bur"),
+        Order {
+            power: Power::France,
+            unit: "Gas".into(),
+            kind: OrderKind::Support {
+                target: "Mar".into(),
+                to: Some("Bur".into()),
+            },
+        },
+    ];
+    let r = Engine.adjudicate(&s, &orders).unwrap().next_state;
+    let retreat = |to: &str| Order {
+        power: Power::Germany,
+        unit: "Bur".into(),
+        kind: OrderKind::Retreat { to: to.into() },
+    };
+    let not_dislodged = Order {
+        power: Power::France,
+        unit: "Gas".into(),
+        kind: OrderKind::Retreat { to: "Spa".into() },
+    };
+    assert_eq!(
+        statuses(&r, &[retreat("Ruh"), not_dislodged]),
+        [OrderStatus::Valid, OrderStatus::Ignored]
+    );
+    assert_eq!(
+        statuses(&r, &[retreat("Mar")]),
+        [OrderStatus::Disband],
+        "Mar is the attacker's origin"
+    );
+    assert_eq!(
+        statuses(&r, &[retreat("Ruh"), retreat("Kie")]),
+        [OrderStatus::Disband, OrderStatus::Disband],
+        "PR-05"
+    );
+
+    let w = winter(
+        vec![unit(Power::Russia, UnitType::A, "Ukr")],
+        &[("StP", None), ("Mos", None)],
+    );
+    let build = |at: &str| Order {
+        power: Power::Russia,
+        unit: at.into(),
+        kind: OrderKind::Build {
+            unit_type: UnitType::A,
+            coast: None,
+        },
+    };
+    // Russia: SCs Sev, War (2) − 1 unit = one build.
+    assert_eq!(
+        statuses(&w, &[build("Sev"), build("War")]),
+        [OrderStatus::Valid, OrderStatus::Ignored]
+    );
+}
+
+#[test]
+fn civil_disorder_powers_are_offered_disbands_in_adjustments() {
+    // GM-entered disbands are used for a power in civil disorder (PR-08), so they are offered.
+    let mut s = winter(
+        vec![
+            unit(Power::Russia, UnitType::A, "Lvn"),
+            unit(Power::Russia, UnitType::A, "Swe"),
+        ],
+        &[("StP", None), ("Mos", None), ("War", None)],
+    );
+    s.civil_disorder.push(CivilDisorder {
+        power: Power::Russia,
+        since: s.phase,
+    });
+    let lvn = unit_options(&s, "Lvn").unwrap();
+    assert!(lvn.civil_disorder);
+    assert_eq!(
+        lvn.orders.iter().map(|o| &o.kind).collect::<Vec<_>>(),
+        [&OrderKind::Disband]
+    );
+    let opts = power_options(&s, Power::Russia);
+    assert!(opts.units.iter().all(|u| u.orders.len() == 1));
+    assert!(opts.builds.is_empty());
 }

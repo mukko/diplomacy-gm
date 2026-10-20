@@ -776,3 +776,31 @@ async fn default_disbands_in_an_adjustment_phase() {
         "{left:?}"
     );
 }
+
+#[tokio::test]
+async fn order_submission_returns_per_order_checks() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let orders = r#"[
+      { "power": "ITA", "unit": "Ven", "type": "move", "to": "Pie" },
+      { "power": "ITA", "unit": "Nap", "type": "move", "to": "Ven" },
+      { "power": "ITA", "unit": "Rom", "type": "support", "target": "Ven", "to": "Pie" }
+    ]"#;
+    let (status, res) = call(
+        &app,
+        Method::PUT,
+        &format!("/games/{id}/phases/S1901M/orders/ITA"),
+        Some(orders.into()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["accepted"], 3);
+    let results = res["results"].as_array().unwrap();
+    let status_of: Vec<&str> = results.iter().map(|r| r["status"].as_str().unwrap()).collect();
+    assert_eq!(status_of, ["valid", "hold", "hold"], "{res}");
+    assert_eq!(results[1]["order"]["unit"], "Nap");
+    assert!(results[1]["reason"].is_string());
+    assert!(results[2]["rules"].as_array().unwrap().iter().any(|r| r == "R-SUP-02"));
+    assert!(results[0].get("reason").is_none());
+}

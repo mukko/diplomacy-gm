@@ -239,8 +239,13 @@ async fn submit_orders(
     let phase: Phase = parse_path(&phase)?;
     let power: Power = parse_path(&power)?;
     let count = orders.len();
-    app.store.update(&id, |g| g.submit_orders(phase, power, orders))?;
-    Ok(Json(json!({ "phase": phase, "power": power, "accepted": count })))
+    let checks = app.store.update(&id, |g| {
+        g.submit_orders(phase, power, orders.clone())?;
+        Ok(options::check_orders(&g.state, &orders))
+    })?;
+    Ok(Json(
+        json!({ "phase": phase, "power": power, "accepted": count, "results": checks }),
+    ))
 }
 
 async fn resolve_phase(
