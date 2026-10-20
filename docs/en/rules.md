@@ -120,7 +120,7 @@ Notation summary:
 | R-STD-04 | **No swapping without convoy:** two units ordered into each other's province cannot both move. (Rule 6.) See PR-01 for supported head-to-head battles. |
 | R-STD-05 | **Rotation:** three or more units may rotate (A→B→C→A) as long as no two units swap directly. (Rule 7.) |
 | R-STD-06 | **Dislodged units still bounce elsewhere:** a dislodged unit can still cause a standoff in a province *other than* the one its attacker came from. (Rule 10.) |
-| R-STD-07 | **No effect on the attacker's origin:** a dislodged unit, even if supported, has **no effect** on the province from which the dislodging attack came. Another unit moving into that province is not bounced by it. (Rule 11.) |
+| R-STD-07 | **No effect on the attacker's origin:** a dislodged unit, even if supported, has **no effect** on the province from which the dislodging attack came. Another unit moving into that province is not bounced by it. (Rule 11.) Applies to head-to-head battles only: a unit dislodged by a convoyed attack can still bounce others in the attacker's origin (PR-20). |
 
 ## 8. Support
 
@@ -128,7 +128,7 @@ Notation summary:
 |----|------|
 | R-SUP-01 | A unit may support instead of moving. Support may be **offensive** (supporting a move) or **defensive** (supporting a unit that holds, supports or convoys). Each valid support adds **+1** strength. |
 | R-SUP-02 | The supporting unit must be able to **legally move to the province it supports into** (ignoring other units). It need not be adjacent to the supported unit. E.g. an army in Brest cannot support into the English Channel; a fleet in Rome cannot support into Venice. |
-| R-SUP-03 | A fleet able to reach either coast of a split-coast province may support a move into that province **regardless of coast**. |
+| R-SUP-03 | A fleet able to reach either coast of a split-coast province may support a move into that province **regardless of coast**. The coast named in such a support is not checked (PR-18). |
 | R-SUP-04 | Support may be given to any power's unit, **without its consent, and cannot be refused** (but see R-SLF-01/02). |
 | R-SUP-05 | **Support to hold:** a unit not ordered to move (hold, support, convoy, or no order) can be supported by an order naming only its province (`S F Bal`). If that unit actually tries to move, the support is invalid. (Rule 8.) |
 | R-SUP-06 | **Support to move:** must match the supported move exactly (origin and destination). If the supported unit moves elsewhere or holds, the support fails and does **not** turn into a hold support. (Rule 9.) |

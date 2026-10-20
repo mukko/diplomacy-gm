@@ -240,6 +240,22 @@ pub(crate) fn validate(state: &GameState, u: usize, kind: &OrderKind) -> Result<
                     vec!["R-SUP-02", "R-SUP-03", "R-SUP-07"],
                 ));
             }
+            // The supported army could not get there on this board: not adjacent, and no convoy
+            // route without the supporter, which cannot convoy at the same time (PR-19).
+            let target = &state.units[t];
+            if let Some(p) = into
+                && target.unit_type == UnitType::A
+                && !army_moves(&target.location).iter().any(|m| m == p)
+                && !convoy_route_exists(state, &target.location, p, Some(here))
+            {
+                return Err((
+                    format!(
+                        "an army in {} cannot reach {p} on this board, so it cannot be supported there",
+                        target.location
+                    ),
+                    vec!["PR-19", "R-CVY-03"],
+                ));
+            }
             Ok(Cmd::Support {
                 target: t,
                 to: into.map(str::to_string),
@@ -261,6 +277,15 @@ pub(crate) fn validate(state: &GameState, u: usize, kind: &OrderKind) -> Result<
                 return Err((
                     "a convoy must go from one coastal province to another".into(),
                     vec!["R-CVY-03"],
+                ));
+            }
+            if !convoy_possible_via(state, &state.units[a].location, dest, here) {
+                return Err((
+                    format!(
+                        "{here} is not on any convoy route from {} to {dest} on this board",
+                        state.units[a].location
+                    ),
+                    vec!["PR-19", "R-CVY-03"],
                 ));
             }
             Ok(Cmd::Convoy {
@@ -303,29 +328,73 @@ fn fleet_destination(here: &str, here_coast: Option<&str>, to: &str) -> Result<O
 /// Validation-time convoy check (R-CVY-03): both ends coastal and a chain of water provinces,
 /// each holding a fleet, links them. Whether those fleets actually convoy is decided later.
 pub(crate) fn convoy_possible(state: &GameState, from: &str, to: &str) -> bool {
+    convoy_route_exists(state, from, to, None)
+}
+
+/// As [`convoy_possible`], without the fleet in `without` (a supporter cannot also convoy).
+fn convoy_route_exists(state: &GameState, from: &str, to: &str, without: Option<&str>) -> bool {
     let coastal = |p: &str| province_type(p) == Some(ProvinceType::Coast);
-    coastal(from) && coastal(to) && fleet_seas_from(state, from).iter().any(|s| sea_borders(s, to))
+    let seas = fleet_seas(state, without);
+    coastal(from) && coastal(to) && fleet_seas_from(&seas, from).iter().any(|s| sea_borders(s, to))
 }
 
-/// Whether the fleet in `sea` can be part of a convoy chain from `from` to `to`.
+/// Whether the fleet in `sea` is necessary for some convoy route from `from` to `to` on this
+/// board, i.e. lies on a chain of fleets with no shortcut (PR-19, DATC 6.G.19).
 pub(crate) fn convoy_possible_via(state: &GameState, from: &str, to: &str, sea: &str) -> bool {
-    convoy_possible(state, from, to)
-        && fleet_seas_from(state, from).contains(sea)
-        && fleet_seas_from(state, to).contains(sea)
+    let seas = fleet_seas(state, None);
+    let coastal = |p: &str| province_type(p) == Some(ProvinceType::Coast);
+    if !coastal(from) || !coastal(to) || !seas.contains(&sea) {
+        return false;
+    }
+    let mut path = Vec::new();
+    seas.iter()
+        .filter(|s| sea_borders(s, from))
+        .any(|&first| minimal_route_through(&seas, &mut path, first, from, to, sea))
 }
 
-/// Water provinces holding a fleet that a chain of such provinces connects to the coast `from`.
-fn fleet_seas_from<'a>(state: &'a GameState, from: &str) -> HashSet<&'a str> {
-    let seas: Vec<&str> = state
+/// Depth-first search over chains `path + [next]` in which only the first fleet borders `from`,
+/// only the last borders `to` and only consecutive fleets are adjacent.
+fn minimal_route_through<'a>(
+    seas: &[&'a str],
+    path: &mut Vec<&'a str>,
+    next: &'a str,
+    from: &str,
+    to: &str,
+    sea: &str,
+) -> bool {
+    path.push(next);
+    let found = if sea_borders(next, to) {
+        path.contains(&sea)
+    } else {
+        seas.iter().any(|&s| {
+            !path.contains(&s)
+                && sea_borders(next, s)
+                && !sea_borders(s, from)
+                && path[..path.len() - 1].iter().all(|p| !sea_borders(p, s))
+                && minimal_route_through(seas, path, s, from, to, sea)
+        })
+    };
+    path.pop();
+    found
+}
+
+/// Water provinces holding a fleet, except `without`.
+fn fleet_seas<'a>(state: &'a GameState, without: Option<&str>) -> Vec<&'a str> {
+    state
         .units
         .iter()
         .filter(|u| u.unit_type == UnitType::F && province_type(&u.location) == Some(ProvinceType::Sea))
         .map(|u| u.location.as_str())
-        .collect();
+        .filter(|&s| Some(s) != without)
+        .collect()
+}
+
+/// Water provinces among `seas` that a chain of such provinces connects to the coast `from`.
+fn fleet_seas_from<'a>(seas: &[&'a str], from: &str) -> HashSet<&'a str> {
     let mut seen: HashSet<&str> = seas.iter().copied().filter(|s| sea_borders(s, from)).collect();
     let mut queue: VecDeque<&str> = seen.iter().copied().collect();
     while let Some(sea) = queue.pop_front() {
-        for &next in &seas {
+        for &next in seas {
             if !seen.contains(next) && sea_borders(sea, next) {
                 seen.insert(next);
                 queue.push_back(next);

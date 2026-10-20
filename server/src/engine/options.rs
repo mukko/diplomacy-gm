@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::adjustment::{check_build, default_disbands as choose_disbands};
 use super::common::{build_sites, in_civil_disorder, sc_count, unit_count, unit_label};
-use super::validate::{self as validation, Cmd, Verdict, convoy_possible, convoy_possible_via, validate};
+use super::validate::{self as validation, Cmd, Verdict, convoy_possible, validate};
 use super::{Engine, province, province_type};
 use crate::adjudicator::Adjudicator;
 use crate::map::{self, ProvinceType};
@@ -361,7 +361,8 @@ fn movement_options(state: &GameState, u: usize) -> UnitOptions {
         }
     }
 
-    // Convoys: a fleet at sea may convoy any army whose convoy route could pass through it.
+    // Convoys: a fleet at sea may convoy any army whose convoy route could pass through it
+    // (checked by validation, PR-19).
     if unit.unit_type == UnitType::F && province_type(here) == Some(ProvinceType::Sea) {
         for (a, army) in state.units.iter().enumerate() {
             if army.unit_type != UnitType::A {
@@ -372,7 +373,7 @@ fn movement_options(state: &GameState, u: usize) -> UnitOptions {
                     target: army.location.clone(),
                     to: to.clone(),
                 };
-                if validate(state, u, &kind).is_ok() && convoy_possible_via(state, &army.location, &to, here) {
+                if validate(state, u, &kind).is_ok() {
                     orders.push(order(power, here, kind));
                 }
             }

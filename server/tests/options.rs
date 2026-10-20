@@ -127,6 +127,55 @@ fn convoy_options() {
 }
 
 #[test]
+fn no_options_for_supports_or_convoys_impossible_on_this_board() {
+    // PR-19 (DATC 6.D.31, 6.G.7, 6.G.19): options and validation agree.
+    let s = board(vec![
+        unit(Power::Austria, UnitType::A, "Rum"),
+        unit(Power::Turkey, UnitType::F, "Bla"),
+        unit(Power::Russia, UnitType::A, "Swe"),
+        unit(Power::Russia, UnitType::F, "Bot"),
+        unit(Power::England, UnitType::F, "Ska"),
+        unit(Power::France, UnitType::A, "Mar"),
+        unit(Power::France, UnitType::F, "Wes"),
+        unit(Power::Italy, UnitType::F, "GoL"),
+    ]);
+    let offered = |location: &str, kind: OrderKind| {
+        unit_options(&s, location)
+            .unwrap()
+            .orders
+            .iter()
+            .any(|o| o.kind == kind)
+    };
+    let support = |target: &str, to: &str| OrderKind::Support {
+        target: target.into(),
+        to: Some(to.into()),
+    };
+    let convoy = |target: &str, to: &str| OrderKind::Convoy {
+        target: target.into(),
+        to: to.into(),
+    };
+    assert!(!offered("Bla", support("Rum", "Arm")));
+    assert!(offered("Bla", convoy("Rum", "Arm")));
+    assert!(!offered("Bot", convoy("Swe", "Nwy")));
+    assert!(offered("Ska", convoy("Swe", "Nwy")));
+    assert!(!offered("Wes", convoy("Mar", "Spa")));
+    assert!(offered("GoL", convoy("Mar", "Spa")));
+    for (location, kind) in [
+        ("Bla", support("Rum", "Arm")),
+        ("Bot", convoy("Swe", "Nwy")),
+        ("Wes", convoy("Mar", "Spa")),
+    ] {
+        let order = Order {
+            power: s.units.iter().find(|u| u.location == location).unwrap().power,
+            unit: location.into(),
+            kind,
+        };
+        let res = Engine.adjudicate(&s, &[order]).unwrap();
+        assert!(!res.orders[0].valid, "{location}");
+    }
+}
+
+#[test]
 fn civil_disorder_units_get_no_orders() {
     let mut s = GameState::standard_start();
     s.civil_disorder.push(CivilDisorder {
