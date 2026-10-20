@@ -1,0 +1,42 @@
+# Builds ready-to-run packages (one executable with the GUI built in) for Windows and macOS,
+# after running the tests. Run it from the Actions tab, or push a tag such as v0.1.0.
+name: package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Tests
+        run: |
+          npm ci --no-fund --no-audit && npm test
+          (cd web && npm ci --no-fund --no-audit && npx vitest run)
+          (cd server && cargo test --locked)
+      - name: Package
+        run: scripts/package.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diplomacy-gm-${{ matrix.target }}
+          path: dist/diplomacy-gm-${{ matrix.target }}/

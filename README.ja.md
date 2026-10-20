@@ -22,6 +22,18 @@
 Ctrl+C で停止します。オプション: `--port 9000`（ポート変更）、`--data-dir DIR`（保存先）、`--no-open`（ブラウザを開かない）、
 `--rebuild`（作り直す）。`./start.sh --help` で一覧を表示します。
 
+## 配布用パッケージ（Windows / macOS）
+
+`scripts/package.sh [ターゲット]` で、GUI を埋め込んだ実行ファイル1つを作り、簡単な説明書と地図のクレジットと一緒に
+`dist/` に zip でまとめます。使う人は Node.js も Rust も不要です。Windows では zip を展開して `diplomacy-gm.exe` を
+ダブルクリックすると、サーバーが起動してブラウザが開き、ゲームはプログラムと同じフォルダの `data\games` に保存されます
+（[packaging/README-windows.txt](packaging/README-windows.txt) 参照）。
+
+- Windows 向けのビルド: Windows 上で `scripts/package.sh x86_64-pc-windows-msvc`、または mingw-w64 を入れた
+  macOS / Linux で `scripts/package.sh x86_64-pc-windows-gnu`。
+- GitHub Actions: [.github/workflows/package.yml](.github/workflows/package.yml) がテストを実行し、Windows 版と
+  macOS 版のパッケージを作ります（手動実行、または `v*` タグの push 時）。
+
 ## 開発
 
 ```bash

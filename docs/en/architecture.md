@@ -191,8 +191,11 @@ hides one power's orders from the others on screen is a display question for the
 
 ### Implemented so far
 
-The server serves the built GUI (`web/dist`, override with `--web-dir`) at `/` on the same local
-address as the API, so one `cargo run` starts everything. During development `npm run dev` in `web/`
+The server serves the built GUI at `/` on the same local address as the API. `web/dist` is
+**embedded into the executable** (release builds read it at compile time, debug builds from disk;
+`--web-dir` serves another directory instead), so a single executable is a complete install. Without
+`--addr` it listens on the first free port of 127.0.0.1:8080-8089. On Windows it opens the browser by
+default (`--open` / `--no-open`) and keeps games in `data\games` next to the executable. During development `npm run dev` in `web/`
 runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
 
 - Start screen: new game, saved-game list, load a save file (optionally under a new ID).

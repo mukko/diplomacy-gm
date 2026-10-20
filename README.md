@@ -23,6 +23,18 @@ changed, starts the server on <http://127.0.0.1:8080/> and opens it in the brows
 `data/games/`. Stop it with Ctrl+C. Options: `--port 9000`, `--data-dir DIR`, `--no-open`, `--rebuild`
 (`./start.sh --help`).
 
+## Ready-to-run package (Windows / macOS)
+
+`scripts/package.sh [TARGET]` builds one executable with the GUI built in and zips it with a short
+README and the map credits into `dist/`. Users need neither Node.js nor Rust: on Windows they unzip
+and double-click `diplomacy-gm.exe`, which starts the server, opens the browser and saves games in
+`data\games` next to the program (see [packaging/README-windows.txt](packaging/README-windows.txt)).
+
+- Windows build: `scripts/package.sh x86_64-pc-windows-msvc` on Windows, or
+  `scripts/package.sh x86_64-pc-windows-gnu` on macOS/Linux with mingw-w64 installed.
+- GitHub Actions: [.github/workflows/package.yml](.github/workflows/package.yml) runs the tests and
+  builds the Windows and macOS packages (manually, or when a `v*` tag is pushed).
+
 ## Development
 
 ```bash
