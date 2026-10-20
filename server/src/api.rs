@@ -32,6 +32,9 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/maps/standard", get(get_map))
+        .route("/maps/standard/svg", get(get_map_svg))
+        .route("/maps/standard/layout", get(get_map_layout))
+        .route("/maps/standard/graph", get(get_map_graph))
         .route("/games", get(list_games).post(create_game))
         .route("/games/import", post(import_game))
         .route("/games/{id}", get(get_game))
@@ -39,6 +42,7 @@ pub fn router(state: AppState) -> Router {
         .route("/games/{id}/history", get(get_history))
         .route("/games/{id}/replay", get(get_replay))
         .route("/games/{id}/replay/{index}", get(get_replay_frame))
+        .route("/games/{id}/phases/{phase}/orders", get(get_orders))
         .route("/games/{id}/phases/{phase}/orders/{power}", put(submit_orders))
         .route("/games/{id}/phases/{phase}/resolve", post(resolve_phase))
         .route("/games/{id}/phases/{phase}/default-disbands", get(get_default_disbands))
@@ -145,6 +149,19 @@ async fn get_map() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/json")], map::STANDARD_MAP_JSON)
 }
 
+/// Drawing assets for the GUI (docs/en/map.md § 7): base map, positions and the adjacency graph.
+async fn get_map_svg() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "image/svg+xml")], map::STANDARD_MAP_SVG)
+}
+
+async fn get_map_layout() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "application/json")], map::STANDARD_MAP_LAYOUT_JSON)
+}
+
+async fn get_map_graph() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "image/svg+xml")], map::STANDARD_MAP_GRAPH_SVG)
+}
+
 async fn list_games(State(app): State<AppState>) -> ApiResult<impl IntoResponse> {
     let (games, unreadable) = app.store.list()?;
     Ok(Json(json!({ "games": games, "unreadable": unreadable })))
@@ -229,6 +246,32 @@ async fn get_replay_frame(
     Ok(Json(
         json!({ "gameId": game.game_id, "total": game.replay_len(), "frame": frame }),
     ))
+}
+
+/// Orders submitted so far for the current phase, per power, with how the adjudicator will treat
+/// them. Local single-GM tool: no secrecy is enforced here (architecture.md § 6).
+async fn get_orders(
+    State(app): State<AppState>,
+    Path((id, phase)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let phase: Phase = parse_path(&phase)?;
+    let game = app.store.load(&id)?;
+    if phase != game.state.phase {
+        return Err(GameError::PhaseMismatch {
+            expected: game.state.phase,
+            got: phase,
+        }
+        .into());
+    }
+    let orders: serde_json::Map<String, serde_json::Value> = game
+        .orders
+        .iter()
+        .map(|(power, orders)| {
+            let checks = options::check_orders(&game.state, orders);
+            (power.code().to_string(), json!(checks))
+        })
+        .collect();
+    Ok(Json(json!({ "phase": phase, "orders": orders })))
 }
 
 async fn submit_orders(

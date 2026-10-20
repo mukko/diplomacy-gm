@@ -804,3 +804,55 @@ async fn order_submission_returns_per_order_checks() {
     assert!(results[2]["rules"].as_array().unwrap().iter().any(|r| r == "R-SUP-02"));
     assert!(results[0].get("reason").is_none());
 }
+
+#[tokio::test]
+async fn map_drawing_assets_are_served() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let (status, layout) = call(&app, Method::GET, "/maps/standard/layout", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(layout["provinces"].as_object().unwrap().len(), 75);
+    assert_eq!(layout["coasts"].as_object().unwrap().len(), 6);
+    for uri in ["/maps/standard/svg", "/maps/standard/graph"] {
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{uri}");
+        assert_eq!(res.headers()["content-type"], "image/svg+xml", "{uri}");
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert!(String::from_utf8_lossy(&body).contains("<svg"), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn submitted_orders_can_be_read_back_with_checks() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+
+    let (status, res) = call(&app, Method::GET, &format!("/games/{id}/phases/S1901M/orders"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["orders"], json!({}));
+
+    let orders = r#"[
+      { "power": "GER", "unit": "Ber", "type": "move", "to": "Kie" },
+      { "power": "GER", "unit": "Mun", "type": "move", "to": "Par" }
+    ]"#;
+    let (status, _) = call(
+        &app,
+        Method::PUT,
+        &format!("/games/{id}/phases/S1901M/orders/GER"),
+        Some(orders.to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, res) = call(&app, Method::GET, &format!("/games/{id}/phases/S1901M/orders"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    let ger = res["orders"]["GER"].as_array().unwrap();
+    assert_eq!(ger.len(), 2);
+    assert_eq!(ger[0]["status"], "valid");
+    assert_eq!(ger[1]["status"], "hold", "Mun-Par is not adjacent: {}", ger[1]);
+
+    let (status, res) = call(&app, Method::GET, &format!("/games/{id}/phases/F1901M/orders"), None).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{res}");
+}

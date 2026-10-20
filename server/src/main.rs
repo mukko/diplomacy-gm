@@ -5,12 +5,18 @@ use std::sync::Arc;
 use diplomacy_gm_server::api::{AppState, router};
 use diplomacy_gm_server::engine::Engine;
 use diplomacy_gm_server::store::GameStore;
+use tower_http::services::{ServeDir, ServeFile};
 
-const USAGE: &str = "usage: diplomacy-gm-server [--data-dir DIR] [--addr HOST:PORT]
+const USAGE: &str = "usage: diplomacy-gm-server [--data-dir DIR] [--addr HOST:PORT] [--web-dir DIR]
 
   --data-dir DIR    directory holding one <gameId>.json per game
                     (default: $DIPLOMACY_GM_DATA_DIR or ./data/games)
-  --addr HOST:PORT  listen address, loopback only (default: 127.0.0.1:8080)";
+  --addr HOST:PORT  listen address, loopback only (default: 127.0.0.1:8080)
+  --web-dir DIR     built GUI to serve at / (default: $DIPLOMACY_GM_WEB_DIR or web/dist
+                    of this repository; build it with `npm run build` in web/)";
+
+/// The GUI build next to this crate (`<repo>/web/dist`).
+const DEFAULT_WEB_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web/dist");
 
 #[tokio::main]
 async fn main() {
@@ -18,6 +24,9 @@ async fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("data/games"));
     let mut addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    let mut web_dir = std::env::var_os("DIPLOMACY_GM_WEB_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_WEB_DIR));
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -27,6 +36,7 @@ async fn main() {
         };
         match arg.as_str() {
             "--data-dir" => data_dir = value("--data-dir").into(),
+            "--web-dir" => web_dir = value("--web-dir").into(),
             "--addr" => {
                 addr = value("--addr")
                     .parse()
@@ -51,10 +61,16 @@ async fn main() {
         eprintln!("cannot open data directory {}: {e}", data_dir.display());
         std::process::exit(1);
     });
-    let app = router(AppState {
+    let mut app = router(AppState {
         store: Arc::new(store),
         adjudicator: Arc::new(Engine),
     });
+    // Serve the built GUI for every path the API does not use (architecture.md § 7).
+    let index = web_dir.join("index.html");
+    let gui = index.is_file();
+    if gui {
+        app = app.fallback_service(ServeDir::new(&web_dir).fallback(ServeFile::new(index)));
+    }
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
         eprintln!("cannot listen on {addr}: {e}");
@@ -64,6 +80,14 @@ async fn main() {
         "diplomacy-gm-server listening on http://{addr} (saves in {})",
         data_dir.display()
     );
+    if gui {
+        println!("GUI: open http://{addr}/ in a browser");
+    } else {
+        println!(
+            "GUI not built ({} has no index.html): run `npm install && npm run build` in web/",
+            web_dir.display()
+        );
+    }
     axum::serve(listener, app).await.expect("server error");
 }
 
