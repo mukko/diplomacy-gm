@@ -107,6 +107,14 @@ export interface Resolution {
   nextState: GameState;
 }
 
+export interface ReplayFrame {
+  index: number;
+  phase: string;
+  state: GameState;
+  orders?: Partial<Record<PowerId, Order[]>>;
+  resolution?: Resolution;
+}
+
 export type Point = [number, number];
 
 export interface MapLayout {

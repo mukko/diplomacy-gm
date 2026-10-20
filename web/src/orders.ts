@@ -92,7 +92,11 @@ export function orderArrow(o: Order): Arrow {
 export function parseTraceOrder(text: string): Arrow | undefined {
   const loc = String.raw`([A-Za-z]{3}(?:/[NSE]C)?)`;
   const u = String.raw`(?:[AF] )?`;
-  let m = new RegExp(`^${u}${loc} [SC] ${u}${loc}(?:-${loc})?`).exec(text);
+  let m = new RegExp(`^B [AF] ${loc}$`).exec(text);
+  if (m) return { kind: "build", at: m[1]! };
+  m = new RegExp(`^[AF] ${loc} D$`).exec(text);
+  if (m) return { kind: "disband", at: m[1]! };
+  m = new RegExp(`^${u}${loc} [SC] ${u}${loc}(?:-${loc})?`).exec(text);
   if (m) {
     const kind = / C /.test(text) ? "convoy" : "support";
     return kind === "convoy"

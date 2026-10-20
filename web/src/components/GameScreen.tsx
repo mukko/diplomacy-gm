@@ -4,12 +4,12 @@ import { api } from "../api";
 import type { Assets } from "../assets";
 import { useI18n } from "../i18n";
 import { orderArrow, orderText, province, sameOrder, unitLocation, type Arrow } from "../orders";
-import type { DisbandProposal, GameState, GameView, Order, OrderCheck, PowerId, PowerOptions, Resolution, UnitOptions } from "../types";
+import type { DisbandProposal, GameState, GameView, Order, OrderCheck, PowerId, PowerOptions, ReplayFrame, Resolution, UnitOptions } from "../types";
 import { POWERS } from "../types";
 import { Board } from "./Board";
 import { ResolutionPanel, Rules, stepArrows } from "./ResolutionPanel";
 
-type Tab = "progress" | "orders" | "resolution";
+type Tab = "progress" | "orders" | "resolution" | "history";
 type Drafts = Partial<Record<PowerId, Order[]>>;
 type Checks = Partial<Record<PowerId, OrderCheck[]>>;
 
@@ -26,6 +26,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
   const [view, setView] = useState<"map" | "graph">("map");
   const [tab, setTab] = useState<Tab>("orders");
   const [replay, setReplay] = useState<{ resolution: Resolution; before: GameState; index: number }>();
+  const [history, setHistory] = useState<{ frames: ReplayFrame[]; index: number; step: number }>();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
@@ -60,6 +61,15 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
 
   const state = game?.state;
   const kind = state?.phase.slice(-1);
+
+  // History: all replay frames (docs/en/architecture.md § 5), loaded when the tab is opened.
+  useEffect(() => {
+    if (tab !== "history" || !game) return;
+    api.replay(id).then(
+      ({ frames }) => setHistory((h) => ({ frames, index: Math.min(h?.index ?? frames.length - 1, frames.length - 1), step: h?.step ?? 0 })),
+      fail,
+    );
+  }, [tab, id, game]);
 
   // Adjustment phase: builds/disbands per power and the automatic disbands.
   useEffect(() => {
@@ -98,7 +108,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
 
   // Board clicks: pick a target for the selected unit, otherwise select the unit there.
   const onBoardSelect = (loc: string) => {
-    if (tab === "resolution" && replay) return;
+    if ((tab === "resolution" && replay) || tab === "history") return;
     if (unitOpts && selected) {
       const targets = unitOpts.orders.filter((o) => (o.type === "move" || o.type === "retreat") && !("viaConvoy" in o && o.viaConvoy));
       const exact = targets.filter((o) => "to" in o && o.to === loc);
@@ -160,13 +170,21 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
     }
   };
 
-  // What the board shows.
-  const boardState = tab === "resolution" && replay ? (replay.index === replay.resolution.trace.length - 1 ? replay.resolution.nextState : replay.before) : state;
-  const step = tab === "resolution" && replay ? replay.resolution.trace[replay.index] : undefined;
+  // What the board shows: the current position, a resolution step, or a phase of the history.
+  const frame = tab === "history" && history ? history.frames[history.index] : undefined;
+  const shown: { resolution: Resolution; before: GameState; index: number } | undefined =
+    tab === "resolution" ? replay : frame?.resolution ? { resolution: frame.resolution, before: frame.state, index: history!.step } : undefined;
+  const boardState = shown
+    ? shown.index === shown.resolution.trace.length - 1
+      ? shown.resolution.nextState
+      : shown.before
+    : (frame?.state ?? state);
+  const step = shown?.resolution.trace[shown.index];
   const traced = stepArrows(step);
+  const replaying = tab === "resolution" || tab === "history";
 
   const draftArrows = useMemo(() => {
-    if (!state || tab === "resolution") return [] as (Arrow & { status?: "ok" | "bad" | "muted" })[];
+    if (!state || tab === "resolution" || tab === "history") return [] as (Arrow & { status?: "ok" | "bad" | "muted" })[];
     const out: (Arrow & { status?: "ok" | "bad" | "muted" })[] = [];
     for (const p of POWERS) {
       for (const o of drafts[p] ?? []) {
@@ -233,15 +251,15 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
           <Board
             asset={asset}
             state={boardState}
-            selected={tab === "resolution" ? traced.provinces[0] : selected}
-            targets={tab === "resolution" ? [] : targets}
-            arrows={tab === "resolution" ? traced.arrows : draftArrows}
+            selected={replaying ? traced.provinces[0] : selected}
+            targets={replaying ? [] : targets}
+            arrows={replaying ? traced.arrows : draftArrows}
             onSelect={onBoardSelect}
           />
         </div>
         <aside className="side">
           <div className="tabs">
-            {(["progress", "orders", "resolution"] as Tab[]).map((k) => (
+            {(["progress", "orders", "resolution", "history"] as Tab[]).map((k) => (
               <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
                 {t(k)}
               </button>
@@ -277,8 +295,49 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
             ) : (
               <p className="muted">{t("noResolution")}</p>
             ))}
+          {tab === "history" &&
+            (history ? (
+              <HistoryPanel
+                frames={history.frames}
+                index={history.index}
+                step={history.step}
+                onFrame={(i) => setHistory({ ...history, index: i, step: 0 })}
+                onStep={(s) => setHistory({ ...history, step: s })}
+              />
+            ) : (
+              <p className="muted">{t("loading")}</p>
+            ))}
         </aside>
       </div>
+    </div>
+  );
+}
+
+function HistoryPanel({ frames, index, step, onFrame, onStep }: { frames: ReplayFrame[]; index: number; step: number; onFrame: (i: number) => void; onStep: (s: number) => void }) {
+  const { t, phase } = useI18n();
+  const frame = frames[index];
+  return (
+    <div className="history">
+      <div className="stepper">
+        <button onClick={() => onFrame(index - 1)} disabled={index <= 0}>
+          ◀ {t("prev")}
+        </button>
+        <select value={index} onChange={(e) => onFrame(Number(e.target.value))}>
+          {frames.map((f) => (
+            <option key={f.index} value={f.index}>
+              {f.resolution ? phase(f.phase) : `${phase(f.phase)} — ${t("currentPosition")}`}
+            </option>
+          ))}
+        </select>
+        <button onClick={() => onFrame(index + 1)} disabled={index >= frames.length - 1}>
+          {t("next")} ▶
+        </button>
+      </div>
+      {frame?.resolution ? (
+        <ResolutionPanel resolution={frame.resolution} before={frame.state} index={step} onIndex={onStep} />
+      ) : (
+        <p className="muted">{t("currentPosition")}</p>
+      )}
     </div>
   );
 }
@@ -382,7 +441,7 @@ function OrdersPanel(props: OrdersPanelProps) {
                   {u.type} {unitLocation(u)}
                 </code>
               </button>
-              <span className="order">{o ? <code>{orderText(state, o).slice(`${u.type} ${unitLocation(u)}`.length).trim()}</code> : <span className="muted">{t("noOrder")}</span>}</span>
+              <span className="order">{o ? <code>{orderText(state, o).slice(`${u.type} ${unitLocation(u)}`.length).trim()}</code> : <span className="muted">{t(kind === "R" ? "noOrderRetreat" : kind === "A" ? "noOrderAdjustment" : "noOrder")}</span>}</span>
               {c && <Status check={c} />}
               {o && (
                 <button className="small" onClick={() => props.onRemove(active, o)}>

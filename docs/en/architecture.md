@@ -205,10 +205,15 @@ runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
 - Resolve with an inline confirmation, then step through the trace (first / prev / next / last, step
   list, details with rule IDs, orders of the step drawn on the board, board after the last step).
   Reopening a game shows its most recent resolution.
+- Retreat phase: dislodged units are drawn next to their province with a dashed red outline; selecting one
+  offers its retreat options (highlighted on the board) and disband. Adjustment phase: builds per home SC
+  (unit type and, for St. Petersburg, coast), disbands, waive, and the automatic disbands (PR-08).
+  Both phases were checked in a browser through a full Spring–Winter cycle.
+- History: a **History** tab lists every phase of the game (replay frames, § 5); pick one (or step
+  with prev / next) to see that phase's starting position and step through its resolution.
 - Japanese / English switch (remembered in the browser).
 
-Not yet: browsing older phases of the history, timers, text entry of orders, and a browser check of the
-retreat and adjustment phases (covered by API and engine tests only).
+Not yet: timers and text entry of orders.
 
 ## 8. Development principles
 

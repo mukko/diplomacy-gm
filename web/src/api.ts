@@ -10,6 +10,7 @@ import type {
   OrderCheck,
   PowerId,
   PowerOptions,
+  ReplayFrame,
   Resolution,
   UnitOptions,
 } from "./types";
@@ -54,6 +55,7 @@ export const api = {
     request<GameView>("POST", `/games/import${asNew ? "?asNew=true" : ""}`, save),
   game: (id: string) => request<GameView>("GET", `/games/${id}`),
   saveUrl: (id: string) => `/games/${id}/save`,
+  replay: (id: string) => request<{ frames: ReplayFrame[] }>("GET", `/games/${id}/replay`),
   replayFrame: (id: string, index: number) =>
     request<{ total: number; frame: { index: number; phase: string; state: GameState; resolution?: Resolution } }>(
       "GET",

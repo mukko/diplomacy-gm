@@ -37,6 +37,8 @@ describe("parseTraceOrder (trace notation → arrows)", () => {
     expect(parseTraceOrder("F Den S F Bal")).toEqual({ kind: "support", from: "Den", target: "Bal", to: undefined });
     expect(parseTraceOrder("F Nth C A Lon-Nwy")).toEqual({ kind: "convoy", from: "Nth", target: "Lon", to: "Nwy" });
     expect(parseTraceOrder("A Vie")).toEqual({ kind: "hold", at: "Vie" });
+    expect(parseTraceOrder("B F StP/NC")).toEqual({ kind: "build", at: "StP/NC" });
+    expect(parseTraceOrder("A Tus D")).toEqual({ kind: "disband", at: "Tus" });
   });
 
   it("ignores text that is not an order", () => {
