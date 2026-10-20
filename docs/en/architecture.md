@@ -184,7 +184,7 @@ hides one power's orders from the others on screen is a display question for the
 | Start screen | New game / load a saved game (list or file upload) / replay a game |
 | Map | SVG map (`standard.svg`) as the main view, with a switch to the adjacency **graph view** (`standard.graph.svg`) as an auxiliary view; units (A/F shapes, power colours), SC ownership, split coasts, click to select unit/province |
 | Order input | Select unit → choose order type → click target(s); shows legal options from the server; text entry as alternative |
-| Progress | Current phase, year/season, per-power submission status, SC counts, timers (R-TURN-05), civil-disorder badges |
+| Progress | Current phase, year/season, per-power submission status, SC counts, civil-disorder badges. No timers (R-TURN-05: the GM keeps time outside the tool) |
 | GM controls | Resolve phase, declare / lift civil disorder per power (PR-16), review automatically proposed disbands and override them manually (PR-08) |
 | Resolution replay | Step through `trace` (prev / next / play): highlight orders, show strengths, cut supports, bounces, dislodgements with rule IDs |
 | History / replay | Browse past phases and their maps/orders frame by frame (§ 5); export the save file |
@@ -217,7 +217,7 @@ runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
 - Text entry: in the Orders tab, "Enter orders as text" reads typed orders for any powers (preview with
   each order's check or error), then adds them to the drafts or adds and submits them.
 
-Not yet: timers.
+Everything listed in this section is implemented; timers are intentionally not part of the tool.
 
 ## 8. Development principles
 

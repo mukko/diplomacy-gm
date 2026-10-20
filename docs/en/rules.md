@@ -65,7 +65,7 @@ Full province data is in [map.md](map.md).
 | R-TURN-02 | **Spring turn phases:** 1. Diplomacy → 2. Order writing → 3. Order resolution → 4. Retreat & disband. |
 | R-TURN-03 | **Fall turn phases:** the same four, plus 5. **Gaining & losing units (Adjustments)**. |
 | R-TURN-04 | After the Fall turn (including retreats), supply-center ownership is updated, the victory condition (R-GEN-03) is checked, then adjustments are made. |
-| R-TURN-05 | Suggested negotiation time: 30 min before the first turn, 15 min before each later turn; may end early if all agree. Order writing: no more than ~5 min. **No diplomacy is allowed** during order writing/reading, retreats, or adjustments. (In the tool these are configurable timers; see architecture.) |
+| R-TURN-05 | Suggested negotiation time: 30 min before the first turn, 15 min before each later turn; may end early if all agree. Order writing: no more than ~5 min. **No diplomacy is allowed** during order writing/reading, retreats, or adjustments. (The tool has no timers: the GM keeps time outside it. Decided by the project owner.) |
 | R-TURN-06 | Orders are dated `Spring 1901`, `Fall 1901`, `Spring 1902`, … |
 
 Phase identifiers used by this project: `S1901M` (Spring movement), `S1901R` (Spring retreat),
