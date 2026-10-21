@@ -34,7 +34,8 @@ Ctrl+C で停止します。オプション: `--port 9000`（ポート変更）�
   ```bash
   brew install mingw-w64                      # Windows 用のリンカー（約 1.4GB）
   rustup target add x86_64-pc-windows-gnu
-  scripts/package.sh x86_64-pc-windows-gnu    # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
+  npm run package:windows                     # = scripts/package.sh x86_64-pc-windows-gnu
+                                              # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
   ```
 
   Linux ではパッケージマネージャーで mingw-w64 を入れます。Windows 上では Node.js と Rust を入れたうえで、

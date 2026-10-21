@@ -35,7 +35,8 @@ and double-click `diplomacy-gm.exe`, which starts the server, opens the browser 
   ```bash
   brew install mingw-w64                      # Windows linker (about 1.4 GB)
   rustup target add x86_64-pc-windows-gnu
-  scripts/package.sh x86_64-pc-windows-gnu    # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
+  npm run package:windows                     # = scripts/package.sh x86_64-pc-windows-gnu
+                                              # → dist/diplomacy-gm-x86_64-pc-windows-gnu.zip
   ```
 
   On Linux install mingw-w64 with the package manager instead. On Windows itself use

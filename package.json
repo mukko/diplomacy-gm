@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package:windows": "scripts/package.sh x86_64-pc-windows-gnu"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
