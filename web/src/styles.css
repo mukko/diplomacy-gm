@@ -138,3 +138,9 @@ ul.plain { list-style: none; padding-left: 0; margin: 0; }
 .parsed { list-style: none; padding: 0; margin: 6px 0; font-size: 12.5px; }
 .parsed li { padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
 .parsed .error-text { color: var(--bad); }
+.view-mode { margin: 4px 0 8px; }
+.unit-step h4 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.unit-step p { margin: 4px 0; }
+.steps li.done { color: var(--muted); }
+.outcome.dislodged { color: var(--bad); font-weight: 600; }
+.outcome.held { color: var(--muted); }

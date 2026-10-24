@@ -206,6 +206,13 @@ runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
   reason and rule IDs). Adjustment phase: builds per home SC, required disbands and the automatic
   disbands (PR-08).
 - Progress: units, SCs, submission status and civil disorder declare/lift per power.
+- **Movement phases replay unit by unit (default).** Units are taken power by power (Austria …
+  Turkey). Each step shows one unit's order, outcome (with reason and rule IDs), and, if dislodged, the
+  attacker's origin and retreat options; "How it was decided" lists the trace entries about that unit.
+  The board is cumulative: units already shown stand at their final positions, and a unit dislodged by
+  an attacker already shown appears dislodged. A switch shows instead the board **before** the phase or
+  the board **after** all units moved at once, both with every order's arrow coloured by outcome.
+  ← / → step through. Retreat and adjustment phases step through their trace.
 - Resolve with an inline confirmation, then step through the trace (first / prev / next / last, step
   list, details with rule IDs, orders of the step drawn on the board, board after the last step).
   Reopening a game shows its most recent resolution.

@@ -7,7 +7,8 @@ import { orderArrow, orderText, province, sameOrder, unitLocation, type Arrow } 
 import type { DisbandProposal, GameState, GameView, Order, OrderCheck, ParsedItem, PowerId, PowerOptions, ReplayFrame, Resolution, UnitOptions } from "../types";
 import { POWERS } from "../types";
 import { Board } from "./Board";
-import { ResolutionPanel, Rules, stepArrows } from "./ResolutionPanel";
+import { ResolutionPanel, Rules, resolutionView } from "./ResolutionPanel";
+import type { ViewMode } from "../unitSteps";
 
 type Tab = "progress" | "orders" | "resolution" | "history";
 type Drafts = Partial<Record<PowerId, Order[]>>;
@@ -27,6 +28,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
   const [tab, setTab] = useState<Tab>("orders");
   const [replay, setReplay] = useState<{ resolution: Resolution; before: GameState; index: number }>();
   const [history, setHistory] = useState<{ frames: ReplayFrame[]; index: number; step: number }>();
+  const [viewMode, setViewMode] = useState<ViewMode>("units");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
@@ -156,6 +158,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
     try {
       const resolution = await api.resolve(id, state.phase);
       setReplay({ resolution, before: state, index: 0 });
+      setViewMode("units");
       setTab("resolution");
       await reload();
       setError(undefined);
@@ -179,13 +182,8 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
   const frame = tab === "history" && history ? history.frames[history.index] : undefined;
   const shown: { resolution: Resolution; before: GameState; index: number } | undefined =
     tab === "resolution" ? replay : frame?.resolution ? { resolution: frame.resolution, before: frame.state, index: history!.step } : undefined;
-  const boardState = shown
-    ? shown.index === shown.resolution.trace.length - 1
-      ? shown.resolution.nextState
-      : shown.before
-    : (frame?.state ?? state);
-  const step = shown?.resolution.trace[shown.index];
-  const traced = stepArrows(step);
+  const rview = shown ? resolutionView(shown.resolution, shown.before, viewMode, shown.index) : undefined;
+  const boardState = rview?.board ?? frame?.state ?? state;
   const replaying = tab === "resolution" || tab === "history";
 
   const draftArrows = useMemo(() => {
@@ -256,9 +254,9 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
           <Board
             asset={asset}
             state={boardState}
-            selected={replaying ? traced.provinces[0] : selected}
+            selected={replaying ? rview?.selected : selected}
             targets={replaying ? [] : targets}
-            arrows={replaying ? traced.arrows : draftArrows}
+            arrows={replaying ? (rview?.arrows ?? []) : draftArrows}
             onSelect={onBoardSelect}
           />
         </div>
@@ -297,7 +295,14 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
           )}
           {tab === "resolution" &&
             (replay ? (
-              <ResolutionPanel resolution={replay.resolution} before={replay.before} index={replay.index} onIndex={(i) => setReplay({ ...replay, index: i })} />
+              <ResolutionPanel
+                resolution={replay.resolution}
+                before={replay.before}
+                index={replay.index}
+                onIndex={(i) => setReplay({ ...replay, index: i })}
+                mode={viewMode}
+                onMode={setViewMode}
+              />
             ) : (
               <p className="muted">{t("noResolution")}</p>
             ))}
@@ -309,6 +314,8 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
                 step={history.step}
                 onFrame={(i) => setHistory({ ...history, index: i, step: 0 })}
                 onStep={(s) => setHistory({ ...history, step: s })}
+                mode={viewMode}
+                onMode={setViewMode}
               />
             ) : (
               <p className="muted">{t("loading")}</p>
@@ -400,7 +407,23 @@ function TextEntry({ gameId, state, busy, onApply }: { gameId: string; state: Ga
   );
 }
 
-function HistoryPanel({ frames, index, step, onFrame, onStep }: { frames: ReplayFrame[]; index: number; step: number; onFrame: (i: number) => void; onStep: (s: number) => void }) {
+function HistoryPanel({
+  frames,
+  index,
+  step,
+  onFrame,
+  onStep,
+  mode,
+  onMode,
+}: {
+  frames: ReplayFrame[];
+  index: number;
+  step: number;
+  onFrame: (i: number) => void;
+  onStep: (s: number) => void;
+  mode: ViewMode;
+  onMode: (m: ViewMode) => void;
+}) {
   const { t, phase } = useI18n();
   const frame = frames[index];
   return (
@@ -421,7 +444,7 @@ function HistoryPanel({ frames, index, step, onFrame, onStep }: { frames: Replay
         </button>
       </div>
       {frame?.resolution ? (
-        <ResolutionPanel resolution={frame.resolution} before={frame.state} index={step} onIndex={onStep} />
+        <ResolutionPanel resolution={frame.resolution} before={frame.state} index={step} onIndex={onStep} mode={mode} onMode={onMode} />
       ) : (
         <p className="muted">{t("currentPosition")}</p>
       )}
