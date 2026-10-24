@@ -886,3 +886,147 @@ async fn order_text_is_parsed_and_checked_without_storing() {
     let (_, orders) = call(&app, Method::GET, &format!("/games/{id}/phases/S1901M/orders"), None).await;
     assert_eq!(orders["orders"], json!({}), "parsing stores nothing");
 }
+
+/// Starting units with Paris's army moved to Burgundy and a fleet added in the Mid-Atlantic.
+fn edited_units(start: &Value) -> Value {
+    let mut units: Vec<Value> = start["state"]["units"].as_array().unwrap().clone();
+    for u in units.iter_mut() {
+        if u["location"] == "Par" {
+            u["location"] = json!("Bur");
+        }
+    }
+    units.push(json!({ "power": "FRA", "type": "F", "location": "Mid" }));
+    Value::Array(units)
+}
+
+#[tokio::test]
+async fn manual_edit_changes_the_position_clears_orders_and_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let (_, start) = call(&app, Method::GET, &format!("/games/{id}"), None).await;
+    call(
+        &app,
+        Method::PUT,
+        &format!("/games/{id}/phases/S1901M/orders/GER"),
+        Some(GERMAN_ORDERS.to_string()),
+    )
+    .await;
+
+    let body = json!({ "units": edited_units(&start), "supplyCenters": { "Bel": "FRA" } }).to_string();
+    let (status, res) = call(
+        &app,
+        Method::POST,
+        &format!("/games/{id}/phases/S1901M/manual-edit"),
+        Some(body.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(res["changed"], true);
+    assert_eq!(res["submitted"], json!([]), "submitted orders are discarded");
+    let units = res["state"]["units"].as_array().unwrap();
+    assert!(units.iter().any(|u| u["location"] == "Bur" && u["power"] == "FRA"));
+    assert!(!units.iter().any(|u| u["location"] == "Par"));
+    assert_eq!(res["state"]["supplyCenters"]["Bel"], "FRA");
+
+    let (_, again) = call(
+        &app,
+        Method::POST,
+        &format!("/games/{id}/phases/S1901M/manual-edit"),
+        Some(body),
+    )
+    .await;
+    assert_eq!(again["changed"], false, "same position: nothing recorded");
+
+    // The edited position is what gets resolved, and the save stays valid across phases.
+    let (status, res) = call(&app, Method::POST, &format!("/games/{id}/phases/S1901M/resolve"), None).await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    let (_, f1901) = call(&app, Method::GET, &format!("/games/{id}"), None).await;
+    let body = json!({ "units": f1901["state"]["units"].as_array().unwrap().iter().filter(|u| u["location"] != "Mid").cloned().collect::<Vec<_>>() }).to_string();
+    let (status, _) = call(
+        &app,
+        Method::POST,
+        &format!("/games/{id}/phases/F1901M/manual-edit"),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let restarted = crate::app(dir.path(), Arc::new(Engine));
+    let (status, game) = call(&restarted, Method::GET, &format!("/games/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK, "save with edits passes validation: {game}");
+    assert!(
+        !game["state"]["units"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|u| u["location"] == "Mid")
+    );
+    let (_, replay) = call(&restarted, Method::GET, &format!("/games/{id}/replay"), None).await;
+    let edits = replay["edits"].as_array().unwrap();
+    assert_eq!(edits.len(), 2);
+    assert_eq!(edits[0]["phase"], "S1901M");
+    assert_eq!(edits[1]["phase"], "F1901M");
+    assert_eq!(
+        replay["frames"][0]["state"]["supplyCenters"]["Bel"], "FRA",
+        "S1901M was resolved from the edited position"
+    );
+}
+
+#[tokio::test]
+async fn invalid_manual_edits_are_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), Arc::new(Engine));
+    let id = new_game(&app).await;
+    let uri = format!("/games/{id}/phases/S1901M/manual-edit");
+    let cases = [
+        (
+            json!([{ "power": "FRA", "type": "A", "location": "Mid" }]),
+            "army cannot",
+        ),
+        (
+            json!([{ "power": "FRA", "type": "F", "location": "Par" }]),
+            "fleet cannot",
+        ),
+        (
+            json!([{ "power": "RUS", "type": "F", "location": "StP" }]),
+            "one of its coasts",
+        ),
+        (
+            json!([{ "power": "FRA", "type": "A", "location": "Spa", "coast": "NC" }]),
+            "has no coast",
+        ),
+        (
+            json!([{ "power": "FRA", "type": "A", "location": "Bur" }, { "power": "GER", "type": "A", "location": "Bur" }]),
+            "two units",
+        ),
+        (
+            json!([{ "power": "FRA", "type": "A", "location": "Xyz" }]),
+            "unknown province",
+        ),
+    ];
+    for (units, msg) in cases {
+        let (status, res) = call(&app, Method::POST, &uri, Some(json!({ "units": units }).to_string())).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{units}: {res}");
+        assert_eq!(res["error"], "invalid-edit");
+        assert!(res["message"].as_str().unwrap().contains(msg), "{units}: {res}");
+    }
+    let (status, _) = call(
+        &app,
+        Method::POST,
+        &uri,
+        Some(json!({ "units": [], "supplyCenters": { "Bur": "FRA" } }).to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "Bur is not a supply center");
+    let (status, _) = call(
+        &app,
+        Method::POST,
+        &format!("/games/{id}/phases/F1901M/manual-edit"),
+        Some(json!({ "units": [] }).to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "wrong phase");
+    let (_, game) = call(&app, Method::GET, &format!("/games/{id}"), None).await;
+    assert_eq!(game["state"]["units"].as_array().unwrap().len(), 22, "nothing changed");
+}

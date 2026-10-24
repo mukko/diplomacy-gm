@@ -20,7 +20,7 @@ use crate::adjudicator::{AdjudicationError, Adjudicator};
 use crate::engine::{options, parse};
 use crate::game::{Game, GameError, new_game_id};
 use crate::map;
-use crate::model::{GameState, Order, Phase, PhaseKind, Power};
+use crate::model::{GameState, Order, Phase, PhaseKind, Power, Unit};
 use crate::store::{GameStore, StoreError};
 
 #[derive(Clone)]
@@ -45,6 +45,7 @@ pub fn router(state: AppState) -> Router {
         .route("/games/{id}/phases/{phase}/orders", get(get_orders))
         .route("/games/{id}/phases/{phase}/orders/{power}", put(submit_orders))
         .route("/games/{id}/phases/{phase}/parse-orders", post(parse_orders))
+        .route("/games/{id}/phases/{phase}/manual-edit", post(manual_edit))
         .route("/games/{id}/phases/{phase}/resolve", post(resolve_phase))
         .route("/games/{id}/phases/{phase}/default-disbands", get(get_default_disbands))
         .route("/games/{id}/units/{prov}/options", get(get_unit_options))
@@ -89,6 +90,7 @@ impl From<GameError> for ApiError {
             GameError::GameOver => (StatusCode::CONFLICT, "game-over"),
             GameError::InvalidOrder(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid-order"),
             GameError::InvalidSave(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid-save"),
+            GameError::InvalidEdit(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid-edit"),
             GameError::Adjudication(AdjudicationError::Failed(_)) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "adjudication-failed")
             }
@@ -232,7 +234,9 @@ async fn get_history(State(app): State<AppState>, Path(id): Path<String>) -> Api
 
 async fn get_replay(State(app): State<AppState>, Path(id): Path<String>) -> ApiResult<impl IntoResponse> {
     let game = app.store.load(&id)?;
-    Ok(Json(json!({ "gameId": game.game_id, "frames": game.replay_frames() })))
+    Ok(Json(
+        json!({ "gameId": game.game_id, "frames": game.replay_frames(), "edits": game.edits }),
+    ))
 }
 
 async fn get_replay_frame(
@@ -317,6 +321,31 @@ async fn parse_orders(
         })
         .collect();
     Ok(Json(json!({ "phase": phase, "items": items })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManualEditRequest {
+    units: Vec<Unit>,
+    #[serde(default)]
+    supply_centers: std::collections::BTreeMap<String, Option<Power>>,
+}
+
+/// Emergency correction: replace the current position's units (and SC owners) by hand. Orders
+/// submitted for the phase are discarded; the change is recorded in the save file's `edits`.
+async fn manual_edit(
+    State(app): State<AppState>,
+    Path((id, phase)): Path<(String, String)>,
+    Json(req): Json<ManualEditRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let phase: Phase = parse_path(&phase)?;
+    let (changed, game) = app.store.update(&id, |g| {
+        let changed = g.manual_edit(phase, req.units.clone(), req.supply_centers.clone())?;
+        Ok((changed, g.clone()))
+    })?;
+    let mut view = json!(GameView::from(game));
+    view["changed"] = json!(changed);
+    Ok(Json(view))
 }
 
 async fn submit_orders(

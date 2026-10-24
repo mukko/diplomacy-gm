@@ -105,8 +105,13 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
 - **Restoring:** a save file (on disk or uploaded) is parsed and **validated** before use: format and
   version, game ID, known provinces/coasts, at most one unit per province (R-UNIT-03), and that the
   history is consistent (each resolution's `nextState` equals the next recorded position, except for
-  `civilDisorder`, which the GM may change between phases). Invalid
+  `civilDisorder`, which the GM may change between phases, and except where a manual edit recorded in
+  `edits` turned that result into the next position). Units must stand where their type may (an army
+  not at sea, a fleet not inland, a fleet on a split-coast province on one of its coasts). Invalid
   data is rejected and nothing is written.
+- **Manual edits** (emergency corrections by the GM) replace the units and supply-center owners of
+  the current position. Each is kept in `edits` as `{ phase, before, after, editedAt }`; orders already
+  submitted for that phase are discarded. Not possible in a retreat phase.
 - **Replay** needs nothing else: the history keeps the starting position, orders and `Resolution`
   (incl. `trace`) of every resolved phase.
 
@@ -125,6 +130,9 @@ Power IDs: `AUS ENG FRA GER ITA RUS TUR`. Province IDs: rulebook abbreviations (
   "history": [                                    // resolved phases, oldest first
     { "phase": "S1901M", "state": { /* GameState */ }, "orders": { /* per power */ },
       "resolution": { /* Resolution */ }, "resolvedAt": "…" }
+  ],
+  "edits": [                                      // manual edits, oldest first (omitted if none)
+    { "phase": "F1901M", "before": { /* GameState */ }, "after": { /* GameState */ }, "editedAt": "…" }
   ]
 }
 ```
@@ -153,6 +161,7 @@ Implemented so far: the routes marked ✔. `resolve` adjudicates movement, retre
 | `GET  /games/:id/phases/:phase/orders` ✔ | Orders submitted so far for the current phase, per power, each with the same `{ order, status, reason?, rules }` check as `PUT …/orders` (local single-GM tool: not secret). `409 phase-mismatch` for another phase |
 | `GET  /games/:id/units/:prov/options` ✔ | Legal orders for one unit in the current phase, as ready-to-submit `Order` objects checked with the adjudicator's own validation. Movement: hold, moves (split-coast destinations with their coast; `viaConvoy` variants where a convoy is possible), hold and move supports (only for moves the supported unit can legally be ordered to make), convoys (only for routes that can pass through this fleet). Retreat: the dislodged unit's retreat options and disband. Adjustment: disband, if its power must remove units. A power in civil disorder gets `civilDisorder: true` and no orders in movement and retreat phases (its orders are ignored, PR-16); in an adjustment phase its disbands are still offered, for the GM to enter (PR-08). `404` if there is no such unit |
 | `GET  /games/:id/powers/:power/options` ✔ | The same for every unit of a power (dislodged units in a retreat phase). In an adjustment phase also `adjustment` (SCs − units) and `builds`: each legal build (home SC × unit type × coast) plus a waive order; empty in civil disorder |
+| `POST /games/:id/phases/:phase/manual-edit` ✔ | Emergency correction: `{ units, supplyCenters? }` replaces the current position's units (and the given SC owners). Validated like a save file; submitted orders are discarded; recorded in `edits`. Returns the game view with `changed`. `422 invalid-edit` (e.g. army at sea, two units in a province, retreat phase), `409 phase-mismatch` |
 | `POST /games/:id/phases/:phase/parse-orders` ✔ | Read order text `{ text }` ([adjudication.md § 2.1](adjudication.md#21-parsing-text-input)); returns `items`: `{ text, order?, error?, check? }` per item. Stores nothing |
 | `PUT  /games/:id/phases/:phase/orders/:power` ✔ | Submit/replace a power's orders. Works for any power, including manual disbands for a power in civil disorder (PR-08). All orders are stored; the response has `accepted` (count) and `results`: per order, in submission order, `{ order, status, reason?, rules }` with `status` `valid` (executed as written; it may still fail during resolution), `hold` (movement: not executable, the unit holds — R-ORD-04), `disband` (retreat: not executable, the unit is disbanded) or `ignored` (no effect: not the power's unit, civil disorder, duplicate, beyond entitlement, wrong phase — PR-05/14/15/16, R-ADJ-01). Same checks as the adjudicator's validation (adjudication.md § 2) |
 | `GET  /games/:id/phases/:phase/default-disbands` ✔ | For the current adjustment phase: each power that must remove units, with `required`, `ordered` (submitted disband orders that will be used, e.g. entered by the GM) and `proposed` (units the engine will remove for the rest, with their PR-08 distance) — R-CD-03 / PR-08 / PR-09. `409 phase-mismatch` if `:phase` is not the current phase, `409 not-adjustment-phase` for movement and retreat phases |
@@ -224,6 +233,11 @@ runs Vite on 127.0.0.1:5173 and proxies `/games` and `/maps` to the API.
   with prev / next) to see that phase's starting position and step through its resolution.
 - Japanese / English switch (remembered in the browser).
 
+- Manual edit (emergency): **Edit manually** in the toolbar switches to a draft of the board. Click a
+  province to add a unit (army/fleet, power, coast), change or remove its unit, move it to an empty
+  province, or set the supply-center owner; the changes are listed. **Confirm** saves them (discarding
+  the phase's submitted orders), **Cancel** drops them. Not available in retreat phases. Edited phases
+  are marked in the History tab.
 - Text entry: in the Orders tab, "Enter orders as text" reads typed orders for any powers (preview with
   each order's check or error), then adds them to the drafts or adds and submits them.
 

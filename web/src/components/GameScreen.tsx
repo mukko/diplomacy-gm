@@ -7,6 +7,7 @@ import { orderArrow, orderText, province, sameOrder, unitLocation, type Arrow } 
 import type { DisbandProposal, GameState, GameView, Order, OrderCheck, ParsedItem, PowerId, PowerOptions, ReplayFrame, Resolution, UnitOptions } from "../types";
 import { POWERS } from "../types";
 import { Board } from "./Board";
+import { ManualEditPanel, clickDraft, draftChanges, draftState, startDraft, type EditDraft } from "./ManualEdit";
 import { ResolutionPanel, Rules, resolutionView } from "./ResolutionPanel";
 import type { ViewMode } from "../unitSteps";
 
@@ -27,8 +28,9 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
   const [view, setView] = useState<"map" | "graph">("map");
   const [tab, setTab] = useState<Tab>("orders");
   const [replay, setReplay] = useState<{ resolution: Resolution; before: GameState; index: number }>();
-  const [history, setHistory] = useState<{ frames: ReplayFrame[]; index: number; step: number }>();
+  const [history, setHistory] = useState<{ frames: ReplayFrame[]; index: number; step: number; editedPhases: string[] }>();
   const [viewMode, setViewMode] = useState<ViewMode>("units");
+  const [editDraft, setEditDraft] = useState<EditDraft>();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
@@ -68,7 +70,13 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
   useEffect(() => {
     if (tab !== "history" || !game) return;
     api.replay(id).then(
-      ({ frames }) => setHistory((h) => ({ frames, index: Math.min(h?.index ?? frames.length - 1, frames.length - 1), step: h?.step ?? 0 })),
+      ({ frames, edits }) =>
+        setHistory((h) => ({
+          frames,
+          index: Math.min(h?.index ?? frames.length - 1, frames.length - 1),
+          step: h?.step ?? 0,
+          editedPhases: (edits ?? []).map((e) => e.phase),
+        })),
       fail,
     );
   }, [tab, id, game]);
@@ -105,6 +113,10 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
 
   // Board clicks: pick a target for the selected unit, otherwise select the unit there.
   const onBoardSelect = (loc: string) => {
+    if (editDraft) {
+      setEditDraft(clickDraft(editDraft, province(loc), assets.data));
+      return;
+    }
     if ((tab === "resolution" && replay) || tab === "history") return;
     if (unitOpts && selected) {
       const targets = unitOpts.orders.filter((o) => (o.type === "move" || o.type === "retreat") && !("viaConvoy" in o && o.viaConvoy));
@@ -160,6 +172,22 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
       setReplay({ resolution, before: state, index: 0 });
       setViewMode("units");
       setTab("resolution");
+      await reload();
+      setError(undefined);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmEdit = async () => {
+    if (!state || !editDraft) return;
+    setBusy(true);
+    try {
+      await api.manualEdit(id, state.phase, editDraft.units, editDraft.supplyCenters);
+      setEditDraft(undefined);
+      setHistory(undefined);
       await reload();
       setError(undefined);
     } catch (e) {
@@ -230,10 +258,35 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
         <a className="button" href={api.saveUrl(id)} download>
           {t("exportSave")}
         </a>
-        <button className="primary" onClick={() => setConfirming(true)} disabled={busy || confirming || !!state.winner}>
-          {busy ? t("resolving") : t("resolvePhase")}
-        </button>
+        {!editDraft && (
+          <button
+            onClick={() => {
+              setConfirming(false);
+              setEditDraft(startDraft(state));
+            }}
+            disabled={busy || !!state.winner || kind === "R"}
+            title={kind === "R" ? t("manualEditNotInRetreat") : t("manualEditHint")}
+          >
+            {t("manualEdit")}
+          </button>
+        )}
+        {!editDraft && (
+          <button className="primary" onClick={() => setConfirming(true)} disabled={busy || confirming || !!state.winner}>
+            {busy ? t("resolving") : t("resolvePhase")}
+          </button>
+        )}
       </div>
+      {editDraft && (
+        <div className="confirm editing">
+          <span>{t("manualEditBanner")}</span>
+          <button className="primary" onClick={confirmEdit} disabled={busy || draftChanges(state, editDraft).length === 0}>
+            {t("decide")}
+          </button>
+          <button onClick={() => setEditDraft(undefined)} disabled={busy}>
+            {t("cancel")}
+          </button>
+        </div>
+      )}
       {confirming && (
         <div className="confirm">
           <span>{t("confirmResolve", { phase: phaseName(state.phase) })}</span>
@@ -253,24 +306,25 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
         <div className="board-wrap">
           <Board
             asset={asset}
-            state={boardState}
-            selected={replaying ? rview?.selected : selected}
-            targets={replaying ? [] : targets}
-            arrows={replaying ? (rview?.arrows ?? []) : draftArrows}
+            state={editDraft ? draftState(state, editDraft) : boardState}
+            selected={editDraft ? editDraft.selected : replaying ? rview?.selected : selected}
+            targets={editDraft || replaying ? [] : targets}
+            arrows={editDraft ? [] : replaying ? (rview?.arrows ?? []) : draftArrows}
             onSelect={onBoardSelect}
           />
         </div>
         <aside className="side">
-          <div className="tabs">
+          {editDraft && <ManualEditPanel state={state} draft={editDraft} map={assets.data} onChange={setEditDraft} />}
+          <div className="tabs" hidden={!!editDraft}>
             {(["progress", "orders", "resolution", "history"] as Tab[]).map((k) => (
               <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
                 {t(k)}
               </button>
             ))}
           </div>
-          {tab === "progress" && <Progress state={state} submitted={game.submitted} disorder={disorder} onToggle={toggleDisorder} />}
-          {tab === "orders" && <TextEntry gameId={id} state={state} busy={busy} onApply={applyText} />}
-          {tab === "orders" && (
+          {!editDraft && tab === "progress" && <Progress state={state} submitted={game.submitted} disorder={disorder} onToggle={toggleDisorder} />}
+          {!editDraft && tab === "orders" && <TextEntry gameId={id} state={state} busy={busy} onApply={applyText} />}
+          {!editDraft && tab === "orders" && (
             <OrdersPanel
               state={state}
               active={active}
@@ -293,7 +347,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
               onSubmit={submit}
             />
           )}
-          {tab === "resolution" &&
+          {!editDraft && tab === "resolution" &&
             (replay ? (
               <ResolutionPanel
                 resolution={replay.resolution}
@@ -306,7 +360,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
             ) : (
               <p className="muted">{t("noResolution")}</p>
             ))}
-          {tab === "history" &&
+          {!editDraft && tab === "history" &&
             (history ? (
               <HistoryPanel
                 frames={history.frames}
@@ -314,6 +368,7 @@ export function GameScreen({ id, assets, onBack }: { id: string; assets: Assets;
                 step={history.step}
                 onFrame={(i) => setHistory({ ...history, index: i, step: 0 })}
                 onStep={(s) => setHistory({ ...history, step: s })}
+                editedPhases={history.editedPhases}
                 mode={viewMode}
                 onMode={setViewMode}
               />
@@ -413,6 +468,7 @@ function HistoryPanel({
   step,
   onFrame,
   onStep,
+  editedPhases,
   mode,
   onMode,
 }: {
@@ -421,6 +477,7 @@ function HistoryPanel({
   step: number;
   onFrame: (i: number) => void;
   onStep: (s: number) => void;
+  editedPhases: string[];
   mode: ViewMode;
   onMode: (m: ViewMode) => void;
 }) {
@@ -436,6 +493,7 @@ function HistoryPanel({
           {frames.map((f) => (
             <option key={f.index} value={f.index}>
               {f.resolution ? phase(f.phase) : `${phase(f.phase)} — ${t("currentPosition")}`}
+              {editedPhases.includes(f.phase) ? ` ${t("editedMark")}` : ""}
             </option>
           ))}
         </select>

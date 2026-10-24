@@ -13,6 +13,7 @@ import type {
   PowerOptions,
   ReplayFrame,
   Resolution,
+  Unit,
   UnitOptions,
 } from "./types";
 
@@ -56,7 +57,7 @@ export const api = {
     request<GameView>("POST", `/games/import${asNew ? "?asNew=true" : ""}`, save),
   game: (id: string) => request<GameView>("GET", `/games/${id}`),
   saveUrl: (id: string) => `/games/${id}/save`,
-  replay: (id: string) => request<{ frames: ReplayFrame[] }>("GET", `/games/${id}/replay`),
+  replay: (id: string) => request<{ frames: ReplayFrame[]; edits?: { phase: string; editedAt: string }[] }>("GET", `/games/${id}/replay`),
   replayFrame: (id: string, index: number) =>
     request<{ total: number; frame: { index: number; phase: string; state: GameState; resolution?: Resolution } }>(
       "GET",
@@ -69,6 +70,8 @@ export const api = {
     request<{ results: OrderCheck[] }>("PUT", `/games/${id}/phases/${phase}/orders/${power}`, orders),
   parseOrders: (id: string, phase: string, text: string) =>
     request<{ items: ParsedItem[] }>("POST", `/games/${id}/phases/${phase}/parse-orders`, { text }),
+  manualEdit: (id: string, phase: string, units: Unit[], supplyCenters: Record<string, PowerId | null>) =>
+    request<GameView & { changed: boolean }>("POST", `/games/${id}/phases/${phase}/manual-edit`, { units, supplyCenters }),
   resolve: (id: string, phase: string) => request<Resolution>("POST", `/games/${id}/phases/${phase}/resolve`),
 
   unitOptions: (id: string, prov: string) =>

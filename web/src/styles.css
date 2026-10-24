@@ -144,3 +144,12 @@ ul.plain { list-style: none; padding-left: 0; margin: 0; }
 .steps li.done { color: var(--muted); }
 .outcome.dislodged { color: var(--bad); font-weight: 600; }
 .outcome.held { color: var(--muted); }
+.confirm.editing { background: #fdecea; border-color: #f2b8b5; }
+.manual-edit h3 { margin-top: 2px; }
+.edit-card { padding: 8px 10px; }
+.edit-card h4 { margin: 0 0 6px; }
+.edit-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.edit-row select { font: inherit; padding: 2px 4px; }
+button.danger { color: var(--bad); border-color: #f2b8b5; }
+.changes code { font-size: 12px; }
+.tabs[hidden] { display: none; }

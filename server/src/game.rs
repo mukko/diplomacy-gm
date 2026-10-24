@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::adjudicator::{AdjudicationError, Adjudicator};
 use crate::map;
-use crate::model::{CivilDisorder, GameState, Order, Phase, PhaseKind, Power, Resolution};
+use crate::model::{CivilDisorder, GameState, Order, Phase, PhaseKind, Power, Resolution, Unit, UnitType};
 
 pub const SAVE_FORMAT: &str = "diplomacy-gm/game";
 pub const SAVE_FORMAT_VERSION: u32 = 1;
@@ -28,6 +28,8 @@ pub enum GameError {
     Adjudication(#[from] AdjudicationError),
     #[error("invalid save data: {0}")]
     InvalidSave(String),
+    #[error("invalid manual edit: {0}")]
+    InvalidEdit(String),
 }
 
 /// A resolved phase: the position it started from, all orders, and the resolution (incl. trace).
@@ -39,6 +41,18 @@ pub struct PhaseRecord {
     pub orders: OrderSet,
     pub resolution: Resolution,
     pub resolved_at: DateTime<Utc>,
+}
+
+/// A position changed by hand by the GM (emergency correction), kept so the change stays visible
+/// in the history and the save file stays consistent (docs/en/architecture.md § 5).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualEdit {
+    /// The phase whose starting position was changed.
+    pub phase: Phase,
+    pub before: GameState,
+    pub after: GameState,
+    pub edited_at: DateTime<Utc>,
 }
 
 /// Save file contents. Everything needed to restore the game (and replay it) is in here.
@@ -61,6 +75,9 @@ pub struct Game {
     /// Resolved phases, oldest first.
     #[serde(default)]
     pub history: Vec<PhaseRecord>,
+    /// Manual changes of a phase's starting position, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edits: Vec<ManualEdit>,
 }
 
 /// One point in the replay: a phase's starting position, plus its orders and resolution
@@ -100,7 +117,48 @@ impl Game {
             state: GameState::standard_start(),
             orders: OrderSet::new(),
             history: Vec::new(),
+            edits: Vec::new(),
         }
+    }
+
+    /// Replace the units and supply-center ownership of the current position by hand (emergency
+    /// correction by the GM). Not possible in a retreat phase. Orders already submitted for the
+    /// phase are discarded, since they may no longer fit the position. Returns whether anything
+    /// changed.
+    pub fn manual_edit(
+        &mut self,
+        phase: Phase,
+        units: Vec<Unit>,
+        supply_centers: BTreeMap<String, Option<Power>>,
+    ) -> Result<bool, GameError> {
+        self.check_phase(phase)?;
+        if phase.kind == PhaseKind::Retreat {
+            return Err(GameError::InvalidEdit(
+                "not possible in a retreat phase: resolve the retreats first".into(),
+            ));
+        }
+        let mut after = self.state.clone();
+        after.units = units;
+        for (sc, owner) in supply_centers {
+            if !after.supply_centers.contains_key(&sc) {
+                return Err(GameError::InvalidEdit(format!("`{sc}` is not a supply center")));
+            }
+            after.supply_centers.insert(sc, owner);
+        }
+        check_state(&after).map_err(GameError::InvalidEdit)?;
+        if after == self.state {
+            return Ok(false);
+        }
+        let now = Utc::now();
+        self.edits.push(ManualEdit {
+            phase,
+            before: std::mem::replace(&mut self.state, after.clone()),
+            after,
+            edited_at: now,
+        });
+        self.orders.clear();
+        self.updated_at = now;
+        Ok(true)
     }
 
     fn check_phase(&self, phase: Phase) -> Result<(), GameError> {
@@ -256,7 +314,12 @@ impl Game {
             return bad(format!("unsupported variant `{}`", self.variant));
         }
 
-        let mut states = self.history.iter().map(|r| &r.state).chain([&self.state]);
+        let mut states = self
+            .history
+            .iter()
+            .map(|r| &r.state)
+            .chain([&self.state])
+            .chain(self.edits.iter().map(|e| &e.after));
         if let Some(bad_state) = states.find_map(|s| check_state(s).err()) {
             return bad(bad_state);
         }
@@ -268,7 +331,14 @@ impl Game {
             let next = self.history.get(i + 1).map(|r| &r.state).unwrap_or(&self.state);
             // Civil disorder may be declared or lifted between phases (PR-16), so the following
             // position may differ from the resolution's result in that list only.
-            if !same_position(&record.resolution.next_state, next) {
+            // Manual edits of the following phase turn the result into that position, in order.
+            let mut expected = record.resolution.next_state.clone();
+            for edit in self.edits.iter().filter(|e| e.phase == next.phase) {
+                if same_position(&edit.before, &expected) {
+                    expected = edit.after.clone();
+                }
+            }
+            if !same_position(&expected, next) {
                 return bad(format!(
                     "history[{i}] ({}): result does not match the following position",
                     record.phase
@@ -316,6 +386,32 @@ fn check_state(state: &GameState) -> Result<(), String> {
         let Some(province) = map.province(&unit.location) else {
             return Err(format!("{}: unknown province `{}`", state.phase, unit.location));
         };
+        // R-MAP-02: armies on land, fleets on water or coasts; a fleet on a split-coast
+        // province is on one of its coasts (R-MAP-06), an army never is.
+        match (unit.unit_type, province.kind, &province.coasts, &unit.coast) {
+            (UnitType::A, map::ProvinceType::Sea, _, _) => {
+                return Err(format!(
+                    "{}: an army cannot be in {} (water)",
+                    state.phase, unit.location
+                ));
+            }
+            (UnitType::F, map::ProvinceType::Land, _, _) => {
+                return Err(format!(
+                    "{}: a fleet cannot be in {} (inland)",
+                    state.phase, unit.location
+                ));
+            }
+            (UnitType::A, _, _, Some(_)) => {
+                return Err(format!("{}: an army in {} has no coast", state.phase, unit.location));
+            }
+            (UnitType::F, _, Some(_), None) => {
+                return Err(format!(
+                    "{}: a fleet in {} must be on one of its coasts",
+                    state.phase, unit.location
+                ));
+            }
+            _ => {}
+        }
         if let Some(coast) = &unit.coast
             && !province.coasts.as_ref().is_some_and(|c| c.contains(coast))
         {
