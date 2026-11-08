@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build a ready-to-run package: one executable with the GUI built in, plus README and credits.
+# Build a ready-to-run package: one executable with the GUI built in, plus README, license,
+# map credits and the licenses of the third-party code built in.
 #
 #   scripts/package.sh                          # for this machine
 #   scripts/package.sh x86_64-pc-windows-gnu    # Windows x64, cross-compiled (needs mingw-w64)
@@ -36,6 +37,8 @@ rm -rf "$STAGE" "$STAGE.zip"
 mkdir -p "$STAGE"
 cp "$OUT/$EXE" "$STAGE/$DEST_EXE"
 cp "$ROOT/shared/map/CREDITS.md" "$STAGE/CREDITS.md"
+cp "$ROOT/LICENSE" "$STAGE/LICENSE.txt"
+"$(command -v python3 || command -v python)" -I "$ROOT/scripts/third_party_licenses.py" "${TARGET:-$NAME}" "$STAGE/THIRD_PARTY_LICENSES.txt"
 if [ -n "$README" ]; then
   # Windows Notepad copes best with CRLF line endings.
   sed 's/$/\r/' "$ROOT/packaging/$README" > "$STAGE/README.txt"

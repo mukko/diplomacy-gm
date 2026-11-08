@@ -51,7 +51,13 @@ Notes
   - Options: diplomacy-gm.exe --help
 
 
-Credits / ライセンス
-  The board map is adapted from "Diplomacy.svg" by Martin Asal (Wikimedia Commons),
-  CC BY-SA 3.0 — see CREDITS.md. Unofficial fan tool; "Diplomacy" is a trademark of Hasbro.
-  盤面の地図は Martin Asal 作「Diplomacy.svg」（CC BY-SA 3.0）を改変したものです（CREDITS.md 参照）。
+License / ライセンス
+  diplomacy-gm is licensed under the MIT License (LICENSE.txt). The board map is adapted from
+  "Diplomacy.svg" by Martin Asal (Wikimedia Commons), CC BY-SA 3.0 — see CREDITS.md. Licenses of
+  the third-party software built into the program: THIRD_PARTY_LICENSES.txt.
+  Unofficial fan tool; "Diplomacy" is a trademark of Hasbro.
+
+  diplomacy-gm は MIT License（LICENSE.txt）です。盤面の地図は Martin Asal 作「Diplomacy.svg」
+  （CC BY-SA 3.0）を改変したものです（CREDITS.md 参照）。プログラムに組み込んだサードパーティの
+  ソフトウェアのライセンスは THIRD_PARTY_LICENSES.txt にあります。
+  非公式のファン製ツールです。「Diplomacy」は Hasbro の商標です。
