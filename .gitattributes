@@ -1,0 +1,14 @@
+# Keep LF line endings on every platform. Windows checkouts would otherwise convert text files to
+# CRLF (core.autocrlf), which breaks the shell scripts run by Git Bash and changes file contents
+# that are pinned by hash.
+* text=auto eol=lf
+
+# The unmodified source map is pinned by SHA-256 (tools/map/build_map.py, layout.test.ts): keep its
+# bytes exactly as committed.
+shared/map/source/** -text
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
